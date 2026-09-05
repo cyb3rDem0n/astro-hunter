@@ -1,10 +1,57 @@
-.venv/
+# Python
 __pycache__/
 *.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Packaging/build
+build/
+dist/
+*.egg-info/
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Jupyter
 .ipynb_checkpoints/
-data/raw/*
-data/processed/*
-outputs/*
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Claude Code local-only project memory/settings
+CLAUDE.local.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Astronomical raw/cache data
+data/raw/
+data/cache/
+*.fits
+*.fits.gz
+
+# Reproducible processed/generated data
+data/processed/
+outputs/
+
+# Keep directories when otherwise empty
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !outputs/.gitkeep
+
+# Curated documentation assets should live under docs/assets/

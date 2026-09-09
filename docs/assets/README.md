@@ -109,18 +109,26 @@ The initial reference target is **Pi Mensae (TIC 261136679)**, used to validate 
 
 ```text
 astro-hunter/
-├── config/
-├── data/
-├── docs/
-├── notebooks/
-├── outputs/
-├── scripts/
-├── src/
-│   └── astro_hunter/
-└── tests/
+├── data/            raw and processed observational products (gitignored)
+├── docs/            scientific guide, architecture, decision log
+├── notebooks/       exploratory analysis
+├── outputs/         generated figures and results (disposable)
+├── scripts/         reproducible command-line entry points
+└── src/
+    └── astro_hunter/
 ```
 
-Detailed scientific methodology and terminology are documented separately under `docs/`.
+The target architecture — including the layer modules and test layout still to
+be implemented — is described in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+Documentation:
+
+- [`docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md`](docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md)
+  — the science: what a light curve is, why detrending was necessary, how to
+  read a periodogram, and a development diary of what worked and what did not.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — software boundaries.
+- [`docs/decisions.md`](docs/decisions.md) — why each scientific parameter has
+  its current value, and which decisions are still open.
 
 ## Technology
 

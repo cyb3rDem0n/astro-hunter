@@ -21,7 +21,9 @@ Local machine-specific preferences belong in `CLAUDE.local.md`, not in this file
 - `scripts/NN_*.py` — thin wrappers only: argument parsing, one call into the
   package, printing and saving. No scientific logic in scripts.
 - `tests/` — pytest. `tests/fixtures/` holds truncated light curves saved to disk.
-- `docs/` — technical diary, per-stage documentation, decision log.
+- `docs/` — technical guide, architecture, per-stage documentation, decision log.
+  `ASTRO_HUNTER_TECHNICAL_GUIDE.md` is the science; `ARCHITECTURE.md` is the
+  software boundaries; `decisions.md` is why the parameters are what they are.
 - `docs/assets/` — curated figures referenced by the documentation. Committed
   deliberately; everything under `outputs/` is disposable and gitignored.
 
@@ -70,11 +72,33 @@ same detected period, duration and transit time before and after.
 
 ## Documentation
 
-Every new scientific stage is documented per section 24 of the README.
-Use the `document-stage` skill rather than improvising the structure.
+Every new scientific stage is documented using the seven-point structure
+defined in the `document-stage` skill, written to `docs/stages/`.
+
+The scientific rationale behind that structure is in
+`docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md` (section 24). The guide explains the
+implemented methodology; `ARCHITECTURE.md` explains software boundaries.
+Do not duplicate methodology into architecture documents.
 
 ## Decisions
 
 `docs/decisions.md` records why the current parameters were chosen. Read it
 before proposing changes to any of them. When I approve a methodology change,
 append the decision there in the same commit.
+## Current state
+
+`ARCHITECTURE.md` describes the target architecture, not the current one.
+As of the last update to this file:
+
+- `src/astro_hunter/tess.py` covers acquisition and part of preprocessing;
+- detection still lives inline in `scripts/02_detect_transit.py` and duplicates
+  the download instead of importing the package;
+- `tests/`, `config/` and the layer modules named in `ARCHITECTURE.md` do not
+  exist yet.
+
+Do not assume a module exists because a document names it. Check the tree.
+
+The first planned change is extracting detection from
+`scripts/02_detect_transit.py` into `src/astro_hunter/detection.py`. That
+refactor is blocked on D-004 and D-009 in `docs/decisions.md`, which are open
+scientific decisions and are mine to make, not yours to resolve.

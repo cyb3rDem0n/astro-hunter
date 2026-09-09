@@ -4,6 +4,18 @@
 
 This document defines the structural boundaries of the Astro Hunter codebase. It is an architectural reference, not a development roadmap.
 
+## Status
+
+**This document describes the target architecture, not the current tree.**
+
+Paths marked ⧗ are planned and do not exist yet. Current implementation:
+`src/astro_hunter/tess.py` covers acquisition and part of preprocessing;
+detection lives in `scripts/02_detect_transit.py` pending extraction into the
+package.
+
+Layer descriptions below define the intended responsibility of each module and
+apply as soon as that module is created.
+
 ## Repository layout
 
 ```text
@@ -14,8 +26,8 @@ astro-hunter/
 ├── README.md
 ├── requirements.txt
 │
-├── config/
-│   └── targets.csv
+├── config/                              ⧗
+│   └── targets.csv                      ⧗
 │
 ├── data/
 │   ├── raw/
@@ -24,6 +36,7 @@ astro-hunter/
 ├── docs/
 │   ├── ASTRO_HUNTER_TECHNICAL_GUIDE.md
 │   ├── ARCHITECTURE.md
+│   ├── decisions.md
 │   └── assets/
 │
 ├── notebooks/
@@ -38,17 +51,18 @@ astro-hunter/
 ├── src/
 │   └── astro_hunter/
 │       ├── __init__.py
-│       ├── acquisition.py
-│       ├── preprocessing.py
-│       ├── detection.py
-│       ├── characterization.py
-│       ├── models.py
-│       └── pipeline.py
+│       ├── tess.py                      ← current: acquisition + preprocessing
+│       ├── acquisition.py               ⧗
+│       ├── preprocessing.py             ⧗
+│       ├── detection.py                 ⧗ blocked on D-004 / D-009
+│       ├── characterization.py          ⧗
+│       ├── models.py                    ⧗
+│       └── pipeline.py                  ⧗
 │
-└── tests/
-    ├── unit/
-    ├── integration/
-    └── fixtures/
+└── tests/                               ⧗
+    ├── unit/                            ⧗
+    ├── integration/                     ⧗
+    └── fixtures/                        ⧗
 ```
 
 ## Architectural layers
@@ -181,3 +195,6 @@ Synthetic transit injection/recovery is preferred for testing detection correctn
 `AGENTS.md` governs automated coding agents.
 
 `CLAUDE.md` adapts the shared agent rules for Claude Code without duplicating them.
+
+`decisions.md` records why each scientific parameter has its current value, and
+which decisions are still open. Methodology rationale belongs there, not here.

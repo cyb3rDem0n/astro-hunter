@@ -128,3 +128,50 @@ peak than the true signal.
 This is the concrete case behind the project's "Detection ≠ Truth" principle.
 
 **Status.** Recorded.
+---
+
+## D-009 — Symmetric vs asymmetric outlier clipping
+
+**Context.** `lightkurve.remove_outliers()` clips symmetrically by default: it
+discards points both above and below the median. A transit is a decrease in
+flux. Symmetric clipping can therefore remove the signal being searched for,
+silently — no error is raised, the curve simply comes out cleaner and BLS finds
+nothing.
+
+Whether this bites depends on `transit depth / per-cadence scatter`, not on the
+sigma value alone. For Pi Mensae the expected depth is ~290 ppm, comparable to
+or below the per-cadence scatter, so no individual in-transit point approaches
+the threshold at either 5σ or 6σ. This is a property of this target, not of the
+method.
+
+**Open question.** Should clipping be made asymmetric — `sigma_upper` active,
+`sigma_lower` effectively disabled — so that the pipeline is structurally unable
+to discard a transit rather than merely unlikely to?
+
+Argument in favour: the instrumental artefacts the clipping targets (cosmic
+rays, detector hits) are flux *excesses*. Decreases are the signal. This also
+follows directly from the existing invariant that data cleaning must not remove
+points for making a candidate less convenient.
+
+**Resolution.** TODO — decide together with D-004.
+
+**Status.** Open. Coupled to D-004.
+
+---
+
+## D-010 — Synthetic transit injection for detection testing
+
+**Decision.** Detection correctness is tested primarily by injecting synthetic
+transits of known period and depth into a real light curve and verifying that
+the search recovers them, rather than by asserting against catalog values for
+real targets.
+
+**Rationale.** The injected truth is defined by the test itself, so a passing
+test cannot be an accident of a catalog lookup. It also allows testing
+sensitivity limits — at what depth and SNR does recovery start to fail — which
+a single real target cannot show.
+
+Pi Mensae (D-007) remains as an end-to-end regression check, not as the primary
+correctness test.
+
+**Status.** Adopted in `docs/ARCHITECTURE.md`, not yet implemented.

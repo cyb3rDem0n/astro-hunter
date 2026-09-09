@@ -1,0 +1,13 @@
+# Targets for scientific runs. Configuration, not results.
+#
+# tic_id : TESS Input Catalogue identifier, digits only, no "TIC" prefix
+# sector : TESS observing sector, or empty for "all available"
+# label  : human-readable name, for reporting only - never read by detection
+# role   : reference | candidate | control
+#            reference - known positive, validates the pipeline (D-007)
+#            control   - expected negative, checks the false-positive rate
+#            candidate - unknown, the actual search targets
+# notes  : free text. Known catalog values may be recorded here for post-hoc
+#          comparison ONLY. They must never be read by the detection path.
+tic_id,sector,label,role,notes
+261136679,1,Pi Mensae,reference,known transiting planet ~6.27 d - see D-007

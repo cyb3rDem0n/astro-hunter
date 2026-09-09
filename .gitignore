@@ -58,3 +58,7 @@ outputs/
 .claude/settings.local.json
 
 # Curated documentation assets should live under docs/assets/
+
+# Claude Code local-only settings (machine-specific, not shared)
+.claude/settings.local.json
+CLAUDE.local.md

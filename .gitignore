@@ -54,4 +54,7 @@ outputs/
 !data/processed/.gitkeep
 !outputs/.gitkeep
 
+# Claude Code local-only settings
+.claude/settings.local.json
+
 # Curated documentation assets should live under docs/assets/

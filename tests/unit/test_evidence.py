@@ -211,3 +211,22 @@ def test_every_verdict_comes_with_a_reason():
     for evidence in cases:
         d = build_dossier(sig(), {"c": lambda s, e=evidence: e})
         assert d.reasoning and d.confidence is not None
+
+
+def test_no_target_at_the_position_is_insufficient_not_contaminated():
+    """Regression: an empty position used to be judged CONTAMINATED, because a
+    distant source was promoted to target and then out-shone by another."""
+    d = dossier_with(ev(EvidenceKind.NEIGHBOUR, target_found=False))
+    verdict, _, why = derive_verdict(d)
+    assert verdict is Verdict.INSUFFICIENT
+    assert "close enough" in why
+
+
+def test_a_doubtful_target_identification_blocks_a_confident_verdict():
+    d = dossier_with(
+        ev(EvidenceKind.NEIGHBOUR, target_identification_doubtful=True,
+           brighter_neighbours=1),
+        ev(EvidenceKind.NEIGHBOUR, identifier="n", separation_arcsec=5.0,
+           could_explain_signal=True, max_producible_depth_ppm=9000),
+    )
+    assert derive_verdict(d)[0] is Verdict.INSUFFICIENT

@@ -36,7 +36,18 @@ def test_aperture_is_largely_uncontaminated():
 
 
 @pytest.mark.network
-def test_empty_field_returns_no_target_without_raising():
-    _target, neighbours = find_neighbours(ra_deg=12.3456, dec_deg=-33.9876,
-                                          radius_arcsec=2.0)
-    assert neighbours == []
+def test_a_position_with_no_close_star_yields_no_target():
+    """Gaia DR3 holds about 1.8 billion sources, so a 60 arcsec cone finds
+    something almost anywhere. What must be absent is a source close enough to
+    *be* the target - otherwise a distant unrelated star gets promoted and every
+    quantity downstream is computed against the wrong object.
+
+    This is the regression for the bug that made an arbitrary empty position
+    come back as CONTAMINATED.
+    """
+    target, neighbours = find_neighbours(ra_deg=12.3456, dec_deg=-33.9876,
+                                         radius_arcsec=60.0)
+    if target is not None:
+        assert target["separation_arcsec"] <= 10.5
+    else:
+        assert neighbours == []

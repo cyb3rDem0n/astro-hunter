@@ -45,6 +45,13 @@ DEFAULT_APERTURE_ARCSEC = 60.0           # a few TESS pixels
 DEFAULT_MAG_LIMIT = 8.0                  # fainter than target + this contributes < 0.1 %
 MAX_NEIGHBOURS_REPORTED = 15
 
+# A source must lie this close to the signal position to be the target. Gaia DR3
+# contains about 1.8 billion sources, so a 60 arcsec cone finds something almost
+# anywhere: without this limit, the nearest source in the aperture gets promoted
+# to target however far away and however unrelated it is, and every quantity
+# downstream is then computed against the wrong star.
+DEFAULT_TARGET_RADIUS_ARCSEC = TESS_PIXEL_ARCSEC / 2
+
 
 class CatalogUnavailable(RuntimeError):
     """The archive could not be reached. Distinct from 'no neighbours found'."""
@@ -112,13 +119,18 @@ def find_neighbours(
     dec_deg: float,
     radius_arcsec: float = DEFAULT_APERTURE_ARCSEC,
     mag_limit: float = DEFAULT_MAG_LIMIT,
+    target_radius_arcsec: float = DEFAULT_TARGET_RADIUS_ARCSEC,
     service=None,
 ) -> tuple[dict | None, list[dict]]:
     """Gaia DR3 sources in the aperture.
 
-    Returns (target, neighbours). The target is taken to be the source closest
-    to the given position; everything else within the radius and within
-    ``mag_limit`` magnitudes of it is a neighbour.
+    Returns (target, neighbours). The target is the source closest to the given
+    position *and* within ``target_radius_arcsec`` of it; if nothing is that
+    close, there is no identifiable target and (None, []) is returned.
+
+    That radius is not a detail. Gaia sees something almost everywhere, so
+    without it a distant unrelated source becomes the target and the dilution,
+    the corrected depth and every exclusion are computed against the wrong star.
     """
     ra_min, ra_max, dec_min, dec_max = _bounding_box(ra_deg, dec_deg, radius_arcsec)
     adql = f"""
@@ -152,6 +164,8 @@ def find_neighbours(
         return None, []
 
     found.sort(key=lambda s: s["separation_arcsec"])
+    if found[0]["separation_arcsec"] > target_radius_arcsec:
+        return None, []
     target = found[0]
     neighbours = [
         s for s in found[1:]
@@ -180,14 +194,19 @@ def crossmatch_neighbours(
         return [Evidence(
             kind=EvidenceKind.NEIGHBOUR,
             source="Gaia DR3",
-            summary=f"no Gaia source within {radius_arcsec:g} arcsec of the position",
+            summary=(
+                f"no Gaia source within {DEFAULT_TARGET_RADIUS_ARCSEC:g} arcsec of the "
+                f"position: the signal cannot be attributed to a star"
+            ),
             retrieved_at=retrieved,
-            payload={"radius_arcsec": radius_arcsec},
+            payload={"target_found": False,
+                     "target_radius_arcsec": DEFAULT_TARGET_RADIUS_ARCSEC},
         )]
 
     ratios = [n["flux_ratio"] for n in neighbours]
     d = dilution(ratios)
 
+    brighter = [n for n in neighbours if n["g_mag"] < target["g_mag"]]
     evidence = [Evidence(
         kind=EvidenceKind.NEIGHBOUR,
         source="Gaia DR3",
@@ -203,8 +222,25 @@ def crossmatch_neighbours(
             "dilution": round(d, 5),
             "neighbour_count": len(neighbours),
             "radius_arcsec": radius_arcsec,
+            "target_found": True,
+            "brighter_neighbours": len(brighter),
         },
     )]
+
+    if brighter:
+        evidence.append(Evidence(
+            kind=EvidenceKind.NEIGHBOUR,
+            source="Gaia DR3",
+            summary=(
+                f"{len(brighter)} source(s) in the aperture are brighter than the "
+                f"assumed target: the position may have resolved to the wrong star"
+            ),
+            retrieved_at=retrieved,
+            payload={"brighter_neighbours": len(brighter),
+                     "target_g_mag": target["g_mag"],
+                     "brightest_neighbour_g_mag": min(n["g_mag"] for n in brighter),
+                     "target_identification_doubtful": True},
+        ))
 
     if signal.depth_ppm:
         observed = signal.depth_ppm * 1e-6

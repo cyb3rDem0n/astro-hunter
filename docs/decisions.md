@@ -615,3 +615,54 @@ must be stated when the benchmark is reported rather than discovered in the
 confusion matrix.
 
 **Status.** Active. Implemented in `core/evidence.py`.
+
+---
+
+## D-022 — A target must be close enough to be the target
+
+**Found by running the pipeline, not by reasoning about it.** An arbitrary sky
+position with no star at it came back as `CONTAMINATED` with confidence 0.6,
+naming a specific Gaia source as the culprit. Every number in that dossier was
+arithmetically correct and the conclusion was meaningless.
+
+**Cause.** `find_neighbours` promoted the nearest Gaia source within the 60
+arcsec aperture to "target", regardless of how far away it was. Gaia DR3 holds
+about 1.8 billion sources, so a 60 arcsec cone finds something almost anywhere:
+**there is no empty field in Gaia**. A source 30 arcsec away, unrelated to the
+signal, became the reference against which dilution, corrected depth and every
+exclusion were computed.
+
+The visible symptom was the dilution reading 30.5 % — the "target" held under a
+third of the aperture flux, meaning something else in the aperture outshone it.
+
+**Decisions.**
+
+*A target radius.* The nearest source must lie within 10.5 arcsec — half a TESS
+pixel — of the signal position to be treated as the target. Otherwise there is
+no identifiable target and the module says so.
+
+*No target yields `INSUFFICIENT`.* Not `INTERESTING`: nothing was established.
+Not `CONTAMINATED`: that verdict presupposes a target to contaminate.
+
+*A brighter neighbour is an alert in its own right.* If anything in the
+aperture outshines the assumed target, the position has probably resolved to
+the wrong star, and the identification is reported as unreliable rather than
+used. This check existed as an integration test on the reference target; it now
+exists in the code, where it can affect a verdict.
+
+**Why the tests missed it.** The integration test used a 2 arcsec radius, which
+did find an empty field and passed. The radius that mattered was the one the
+pipeline actually uses.
+
+Two lessons, both about method rather than astronomy. A test that passes with
+parameters the production path never uses is not testing the production path.
+And "empty sky" was an assumption about the catalog that nobody checked — the
+same class of error as assuming a column name.
+
+**A footnote on D-018.** The first regression test written for this fix was
+itself wrong: it offset the source by 0.008° in right ascension expecting 24
+arcsec, which at declination −80 is 4.8 arcsec, inside the target radius. The
+convergence of meridians documented in D-018 caught its own author. Offsets in
+test fixtures are now made in declination, which is unaffected.
+
+**Status.** Active. Implemented in `neighbours.py` and `core/evidence.py`.

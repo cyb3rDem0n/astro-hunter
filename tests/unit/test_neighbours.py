@@ -176,3 +176,33 @@ def test_all_evidence_carries_a_source():
             src(POS["ra_deg"] + 0.001, POS["dec_deg"], 12.0, "n1")]
     for e in crossmatch_neighbours(signal(depth_ppm=500), service=FakeService(rows)):
         assert e.source.strip()
+
+
+def test_no_source_close_enough_means_no_target():
+    """Gaia sees something almost everywhere, so proximity has to be required.
+
+    Without this, a distant unrelated source is promoted to target and every
+    quantity downstream is computed against the wrong star.
+    """
+    # Offset in declination, not right ascension: at dec -80 the meridians
+    # converge, so 0.008 deg of RA is under 5 arcsec (D-018).
+    rows = [src(POS["ra_deg"], POS["dec_deg"] + 0.005, 12.0, "far")]   # 18 arcsec
+    target, neighbours = find_neighbours(**POS, service=FakeService(rows))
+    assert target is None
+    assert neighbours == []
+
+
+def test_absent_target_is_reported_as_such():
+    rows = [src(POS["ra_deg"], POS["dec_deg"] + 0.005, 12.0, "far")]   # 18 arcsec
+    ev = crossmatch_neighbours(signal(depth_ppm=900), service=FakeService(rows))
+    assert ev[0].payload["target_found"] is False
+    assert "cannot be attributed to a star" in ev[0].summary
+
+
+def test_a_brighter_neighbour_raises_a_misidentification_alert():
+    """If something in the aperture outshines the target, the position probably
+    resolved to the wrong star."""
+    rows = [src(POS["ra_deg"], POS["dec_deg"], 14.0, "assumed-target"),
+            src(POS["ra_deg"] + 0.002, POS["dec_deg"], 10.0, "much-brighter")]
+    ev = crossmatch_neighbours(signal(depth_ppm=900), service=FakeService(rows))
+    assert any(e.payload.get("target_identification_doubtful") for e in ev)

@@ -122,7 +122,21 @@ def derive_verdict(dossier: Dossier) -> tuple[Verdict, float, str]:
             return (Verdict.INSUFFICIENT, 0.75,
                     f"only {e.payload['observed_transits']} transit(s) covered by data")
 
-    # 4. A neighbour bright enough to produce the observed depth.
+    # 4. No star at the position: nothing downstream is about the right object.
+    for e in dossier.of_kind(EvidenceKind.NEIGHBOUR):
+        if e.payload.get("target_found") is False:
+            return (Verdict.INSUFFICIENT, 0.7, (
+                "no catalogued star close enough to the signal position to be its "
+                "source; contamination and depth cannot be assessed"))
+
+    # 4b. The position may have resolved to the wrong star.
+    for e in dossier.of_kind(EvidenceKind.NEIGHBOUR):
+        if e.payload.get("target_identification_doubtful"):
+            return (Verdict.INSUFFICIENT, 0.6, (
+                f"{e.payload['brighter_neighbours']} source(s) in the aperture are "
+                f"brighter than the assumed target: the identification is unreliable"))
+
+    # 5. A neighbour bright enough to produce the observed depth.
     culprits = [
         e for e in dossier.of_kind(EvidenceKind.NEIGHBOUR)
         if e.payload.get("could_explain_signal")
@@ -134,7 +148,7 @@ def derive_verdict(dossier: Dossier) -> tuple[Verdict, float, str]:
             f"produce up to {worst.payload['max_producible_depth_ppm']:.0f} ppm, "
             f"enough to account for the signal"))
 
-    # 5. A catalogued host, but this signal is not its known planet.
+    # 6. A catalogued host, but this signal is not its known planet.
     unrelated = [
         e for e in _confirmed_matches(dossier)
         if e.payload["period_relation"] == "unrelated"
@@ -144,12 +158,12 @@ def derive_verdict(dossier: Dossier) -> tuple[Verdict, float, str]:
             f"{unrelated[0].identifier} is catalogued at this position, but at an "
             f"unrelated period: a candidate additional planet in a known system"))
 
-    # 6. Checks could not run. Say so rather than reading silence as a clean result.
+    # 7. Checks could not run. Say so rather than reading silence as a clean result.
     if failed:
         return (Verdict.INSUFFICIENT, 0.5,
                 f"checks did not complete: {', '.join(failed)}")
 
-    # 7. Nothing found by any check.
+    # 8. Nothing found by any check.
     return (Verdict.INTERESTING, 0.5,
             "no catalogue match, no capable contaminant, no instrumental coincidence")
 

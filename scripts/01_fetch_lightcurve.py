@@ -1,10 +1,10 @@
 from pathlib import Path
-import sys
 
 import matplotlib.pyplot as plt
 
-from astro_hunter.domains.exoplanets.photometry.tess 
-import download_tess_lightcurve
+from astro_hunter.domains.exoplanets.photometry.tess import download_tess_lightcurve
+
+ROOT = Path(__file__).resolve().parents[1]
 
 TARGET = "TIC 261136679"  # Pi Mensae
 SECTOR = 1

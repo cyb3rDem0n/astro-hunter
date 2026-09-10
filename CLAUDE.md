@@ -87,18 +87,21 @@ before proposing changes to any of them. When I approve a methodology change,
 append the decision there in the same commit.
 ## Current state
 
-`ARCHITECTURE.md` describes the target architecture, not the current one.
-As of the last update to this file:
+## Current state
 
-- `src/astro_hunter/tess.py` covers acquisition and part of preprocessing;
-- detection still lives inline in `scripts/02_detect_transit.py` and duplicates
-  the download instead of importing the package;
-- `tests/`, `config/` and the layer modules named in `ARCHITECTURE.md` do not
-  exist yet.
+`ARCHITECTURE.md` describes the target architecture. What exists today:
+
+- `core/models.py` is implemented: Signal, Evidence, Dossier, Verdict.
+  Everything else under `core/` is a documented placeholder.
+- `domains/exoplanets/photometry/` holds the working transit pipeline.
+  It is a proving ground, not the critical path.
+- `domains/exoplanets/{domain,catalogs,instrumental}.py` and `sources/toi.py`
+  are placeholders.
+- No tests yet beyond the directory structure.
 
 Do not assume a module exists because a document names it. Check the tree.
 
-The first planned change is extracting detection from
-`scripts/02_detect_transit.py` into `src/astro_hunter/detection.py`. That
-refactor is blocked on D-004 and D-009 in `docs/decisions.md`, which are open
-scientific decisions and are mine to make, not yours to resolve.
+The next planned change is the catalog cross-match in
+`domains/exoplanets/catalogs.py`. Before implementing it, the TOI catalog's
+actual disposition encoding must be verified against the live catalog — see
+D-013. Do not assume the schema.

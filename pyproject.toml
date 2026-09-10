@@ -1,0 +1,33 @@
+[project]
+name = "astro-hunter"
+version = "0.3.0"
+description = "Automated triage for astronomical candidate signals"
+requires-python = ">=3.11"
+dependencies = [
+    "lightkurve>=2.4",
+    "astropy>=5.3",
+    "numpy>=1.24",
+    "matplotlib>=3.7",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "network: touches a remote archive; excluded from the default run",
+    "benchmark: calls a language model and costs money per run",
+]

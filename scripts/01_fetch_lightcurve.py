@@ -3,10 +3,8 @@ import sys
 
 import matplotlib.pyplot as plt
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
-
-from astro_hunter.tess import download_tess_lightcurve
+from astro_hunter.domains.exoplanets.photometry.tess 
+import download_tess_lightcurve
 
 TARGET = "TIC 261136679"  # Pi Mensae
 SECTOR = 1

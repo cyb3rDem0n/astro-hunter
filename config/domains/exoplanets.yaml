@@ -1,0 +1,33 @@
+# Exoplanet domain configuration.
+# Which catalogs to consult, in which order, and what a match means.
+# Configuration, not results. Nothing here is written back to at runtime.
+
+domain: exoplanets
+
+# Ordered cheapest-and-most-discriminating first. Most candidates are already
+# known; finding that out costs one query.
+catalogs:
+  - name: toi
+    role: known
+    match_radius_arcsec: 5
+  - name: nasa_exoplanet_archive
+    role: known
+    match_radius_arcsec: 5
+  - name: simbad
+    role: context
+    match_radius_arcsec: 10
+  - name: gaia_dr3
+    role: neighbours
+    match_radius_arcsec: 60          # aperture-scale: contaminating sources
+
+instrumental_checks:
+  - momentum_dumps
+  - scattered_light_windows
+  - sector_boundaries
+  - saturation
+
+# Thresholds are recorded here, not in code, so a change is visible in a diff
+# and can be pointed at from docs/decisions.md.
+thresholds:
+  known_match_arcsec: 5.0
+  neighbour_search_arcsec: 60.0

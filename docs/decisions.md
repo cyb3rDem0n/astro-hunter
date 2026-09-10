@@ -175,3 +175,117 @@ Pi Mensae (D-007) remains as an end-to-end regression check, not as the primary
 correctness test.
 
 **Status.** Adopted in `docs/ARCHITECTURE.md`, not yet implemented.
+
+---
+
+## D-011 — Scope change: from detection pipeline to candidate triage
+
+**Decision.** The centre of the project moves from *detecting* photometric
+signals to *triaging* candidate signals that already exist. Astro Hunter takes
+a signal someone else has flagged and produces an evidence dossier: already
+known, instrumental artefact, or worth a human's time.
+
+**Rationale.**
+
+Detection is a solved and crowded problem. TLS, wotan, TRICERATOPS and
+ExoMiner are mature, published and open source; nothing this project writes
+will beat them, and re-implementing them produces a worse tool and no new
+knowledge.
+
+The unsolved problem is throughput. TESS had catalogued over 7,800 planet
+candidates by early 2026 with fewer than 720 confirmed, and vetting still
+depends on manual inspection of Data Validation reports, which does not scale.
+The anomaly-detection literature names the same bottleneck from the other
+direction: ASTRONOMALY's limiting factor is the expert who must label the
+queue, and its own authors state that machine learning struggles to separate
+interesting anomalies from instrumental artefacts and uninteresting rare
+sources.
+
+The per-candidate work behind that bottleneck is largely cross-referencing,
+not astrophysics: is this object catalogued, is there literature, does the dip
+coincide with a known instrumental event, is there a contaminating source in
+the aperture. That is tool-using agent work, and it is where this project's
+author has an actual advantage.
+
+**Consequence.** The photometric pipeline is retained as a proving ground and
+as a future queue producer, but leaves the critical path. Public queues (TOI,
+ExoFOP) already exist, so triage can be built and evaluated without waiting
+for local detection to be finished.
+
+**Rejected alternative.** Building a component specifically for ASTRONOMALY.
+Writing an integration for someone else's project without a user produces dead
+software. Build a triage service that works on a real queue and demonstrate it;
+integration is a detail afterwards.
+
+**Status.** Active as of the scope change.
+
+---
+
+## D-012 — Core is domain-agnostic, domains are plugins
+
+**Decision.** `src/astro_hunter/core/` contains the queue, agent, evidence
+engine, traceability and metrics, and knows nothing about exoplanets.
+`src/astro_hunter/domains/<name>/` supplies which catalogs to query, what
+counts as "already known", and what counts as "interesting".
+
+`core` must never import from `domains`. The dependency runs one way.
+
+**Rationale.** A second domain should be a package, not a repository. Splitting
+the project into separate repos produces two half-maintained projects that both
+look abandoned.
+
+**Consequence.** Exoplanets are the first implemented domain, not a separate
+product. The photometric code moves to
+`domains/exoplanets/photometry/`.
+
+**Status.** Active.
+
+---
+
+## D-013 — Benchmark: agent verdicts against expert dispositions
+
+**Decision.** The triage agent is evaluated against dispositions already
+assigned by human experts in the TOI catalog. The disposition is hidden, the
+agent runs, the verdict is compared. Reported metrics are precision, recall and
+a confusion matrix, per verdict class.
+
+**Rationale.** An agent that produces judgements without a measurable error
+rate is an opinion generator. Expert dispositions provide labels this project
+did not create, on real data, at a scale that makes the metric meaningful.
+
+This is the same principle as D-007 one level up: Pi Mensae shows the
+photometric pipeline recovers a known signal; TOI dispositions show the agent
+judges as an expert would.
+
+**Caveat.** Labelled candidates have already been vetted, so the benchmark
+demonstrates accuracy, not discovery. Discovery requires pointing the system at
+unlabelled queues, which is only meaningful once accuracy is established.
+
+**Verify before building.** Which dispositions the TOI catalog exposes, and how
+they are encoded, must be checked against the live catalog rather than assumed.
+
+**Status.** Active. Not yet implemented.
+
+---
+
+## D-014 — The agent reports evidence; it never asserts
+
+**Decision.** The agent's output is a dossier, not a judgement in prose. Every
+statement carries the source that produced it: catalog name, identifier,
+angular separation, query timestamp. A statement without a source is not
+emitted.
+
+The agent never produces a scientific number. Periods, depths, probabilities
+and separations come from deterministic tools; the agent selects, orders and
+reports them.
+
+**Rationale.** For a language model, a plausible wrong answer is
+indistinguishable from a right one at the point of generation. In a scientific
+context that is the worst available failure mode. Requiring a source for every
+claim means an astronomer can check the output without redoing the work, which
+is the difference between a usable tool and a demo.
+
+A verdict and a confidence are permitted, because they are the agent's own
+summary of the evidence and are labelled as such.
+
+**Status.** Active. Binding on all agent prompts and output schemas.

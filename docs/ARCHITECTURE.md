@@ -1,200 +1,116 @@
-# Astro Hunter — Repository Architecture
+# Architecture
 
 ## Purpose
 
-This document defines the structural boundaries of the Astro Hunter codebase. It is an architectural reference, not a development roadmap.
+This document defines the structural boundaries of the Astro Hunter codebase.
+It is an architectural reference, not a roadmap.
 
 ## Status
 
-**This document describes the target architecture, not the current tree.**
+**This describes the target architecture, not the current tree.** Paths marked
+⧗ exist as documented placeholders with no implementation. What actually works
+today is the photometric proving ground under
+`domains/exoplanets/photometry/`.
 
-Paths marked ⧗ are planned and do not exist yet. Current implementation:
-`src/astro_hunter/tess.py` covers acquisition and part of preprocessing;
-detection lives in `scripts/02_detect_transit.py` pending extraction into the
-package.
+## What the system does
 
-Layer descriptions below define the intended responsibility of each module and
-apply as soon as that module is created.
+Astro Hunter triages astronomical candidate signals. It receives a signal that
+someone else detected, gathers evidence about it from catalogs, literature and
+instrumental records, and produces a dossier stating whether the signal is
+already known, consistent with an instrumental artefact, plausibly from a
+contaminating neighbour, or worth a human's time.
+
+It is not a detector. The scope change is recorded as D-011.
+
+## Layers
+
+```
+queue source  ->  triage  ->  dossier  ->  metrics
+                    |
+                    +-- domain (catalogs, instrumental checks, interpretation)
+                    +-- tools  (deterministic; produce every number)
+```
+
+### Core (`src/astro_hunter/core/`)
+
+Domain-agnostic. Queue, evidence engine, agent loop, tool registry, metrics.
+
+**Core must never import from `domains`.** The dependency runs one way. A
+second domain is a package, not a fork (D-012).
+
+| Module | Responsibility |
+|---|---|
+| `models.py` | `Signal`, `Evidence`, `Dossier`, `Verdict`. Implemented. |
+| `queue.py` ⧗ | Hold and order pending signals; resume rather than restart. |
+| `evidence.py` ⧗ | Run domain checks, collect `Evidence`, assemble a `Dossier`. |
+| `agent.py` ⧗ | Orchestration, verdict, guardrails. |
+| `tools.py` ⧗ | Expose checks as tools; enforce provenance and small results. |
+| `metrics.py` ⧗ | Precision, recall, confusion matrix, precision@k. |
+
+### Domains (`src/astro_hunter/domains/<name>/`)
+
+Everything domain-specific: which catalogs, what a match means, which
+instrumental windows apply, how evidence maps to a verdict.
+
+`exoplanets` is the first implemented domain, not a separate product.
+
+Under it, `photometry/` holds the original transit pipeline. It is retained as
+a proving ground — it demonstrates the project handles real observational data
+— and as a future queue producer. It is no longer the critical path.
+
+### Sources (`src/astro_hunter/sources/`)
+
+Where queues come from. Each yields `Signal` objects.
+
+`toi.py` ⧗ has two deliberately separate modes: **benchmark**, where expert
+dispositions are retained as hidden labels, and **triage**, where they are not
+fetched at all. Keeping these apart in code rather than by discipline is what
+stops a label leaking into agent input.
+
+## The evidence contract
+
+Every claim in a dossier carries the source that produced it: catalog name,
+identifier, angular separation, retrieval time. `Evidence` cannot be
+constructed without a source, so an unattributed claim cannot reach a dossier.
+
+The agent never produces a scientific number. Numbers come from deterministic
+tools; the agent selects, orders and reports them. It may state a verdict and a
+confidence, labelled as its own summary.
+
+This is D-014, and it is enforced by the type rather than requested in a
+prompt.
+
+## Ordering
+
+Checks run cheapest-and-most-discriminating first. Most candidates are already
+catalogued, and finding that out costs one query. Anything expensive — pixel
+data, model fitting, a language model — runs only on what survives.
+
+## Evaluation
+
+The system is measured, not demonstrated (D-013). Agent verdicts are compared
+against dispositions assigned by human experts, with the labels hidden at run
+time. Reported: precision, recall, confusion matrix per class, and precision@k
+over the queue.
+
+Benchmark tests cost money per run, are marked `@pytest.mark.benchmark`, and
+are excluded from the default suite.
 
 ## Repository layout
 
-```text
-astro-hunter/
-├── AGENTS.md
-├── CLAUDE.md
-├── .gitignore
-├── README.md
-├── requirements.txt
-│
-├── config/                              ⧗
-│   └── targets.csv                      ⧗
-│
-├── data/
-│   ├── raw/
-│   └── processed/
-│
-├── docs/
-│   ├── ASTRO_HUNTER_TECHNICAL_GUIDE.md
-│   ├── ARCHITECTURE.md
-│   ├── decisions.md
-│   └── assets/
-│
-├── notebooks/
-│
-├── outputs/
-│
-├── scripts/
-│   ├── 01_fetch_lightcurve.py
-│   ├── 02_detect_transit.py
-│   └── ...
-│
-├── src/
-│   └── astro_hunter/
-│       ├── __init__.py
-│       ├── tess.py                      ← current: acquisition + preprocessing
-│       ├── acquisition.py               ⧗
-│       ├── preprocessing.py             ⧗
-│       ├── detection.py                 ⧗ blocked on D-004 / D-009
-│       ├── characterization.py          ⧗
-│       ├── models.py                    ⧗
-│       └── pipeline.py                  ⧗
-│
-└── tests/                               ⧗
-    ├── unit/                            ⧗
-    ├── integration/                     ⧗
-    └── fixtures/                        ⧗
+```
+config/domains/<name>.yaml     thresholds and catalog lists, not code
+docs/                          architecture, decisions, technical guide
+src/astro_hunter/core/         domain-agnostic triage
+src/astro_hunter/domains/      domain packages
+src/astro_hunter/sources/      queue sources
+scripts/                       thin CLI wrappers, no logic
+tests/{unit,integration,benchmark,fixtures}/
 ```
 
-## Architectural layers
+## Companion documents
 
-### Acquisition
-
-Responsible only for locating and retrieving astronomical products.
-
-Inputs may include TIC identifier, sector, mission, author, cadence, or product constraints.
-
-It must not classify or validate astrophysical signals.
-
-### Preprocessing
-
-Responsible for transformations required to prepare a time series for scientific analysis, including missing-value handling, normalization, detrending, and conservative outlier handling.
-
-Each transformation should expose its parameters and preserve temporal coordinates.
-
-### Detection
-
-Responsible for blind signal search.
-
-For the current transit workflow, this includes BLS period search and production of periodogram-derived quantities.
-
-Detection must not use known catalog periods as priors merely to reproduce expected answers.
-
-### Characterization
-
-Responsible for measuring properties of a detected candidate, such as period, transit duration, depth, noise, approximate SNR, and number of observed events.
-
-Characterization consumes a candidate produced by detection. It does not establish planetary nature.
-
-### Validation
-
-Responsible for independent checks, catalog comparison, false-positive analysis, and consistency tests.
-
-External catalog truth belongs here rather than in detection.
-
-### Models
-
-Contains typed data structures exchanged between layers.
-
-Scientific values represented as plain scalars must communicate units through types, metadata, or unambiguous field names.
-
-### Pipeline
-
-Orchestrates layers.
-
-The pipeline should contain little scientific mathematics itself. Numerical methodology belongs in the corresponding domain module so that it remains independently testable.
-
-## Entry points
-
-`scripts/` contains reproducible command-line entry points and milestone demonstrations.
-
-Scripts should progressively become wrappers around `src/astro_hunter/` rather than duplicate scientific algorithms.
-
-## Configuration
-
-Parameters that define a scientific run should be explicit and versionable where practical.
-
-Examples include:
-
-- target identifiers;
-- sectors;
-- preprocessing windows;
-- outlier thresholds;
-- BLS period limits;
-- transit-duration search limits.
-
-Configuration and observational results must remain distinguishable.
-
-## Data lifecycle
-
-```text
-remote archive
-     ↓
-raw observational product
-     ↓
-preprocessing
-     ↓
-derived time series
-     ↓
-detection
-     ↓
-candidate
-     ↓
-characterization
-     ↓
-validation/report
-```
-
-Raw data is immutable. Every downstream artifact should be reproducible from the raw source plus code and configuration.
-
-## Scientific dependency direction
-
-Preferred dependency flow:
-
-```text
-acquisition
-    ↓
-preprocessing
-    ↓
-detection
-    ↓
-characterization
-    ↓
-validation
-```
-
-`pipeline.py` may orchestrate all stages.
-
-Lower layers should not depend on higher layers. In particular, detection must not import validation logic.
-
-## Test strategy
-
-Unit tests cover numerical transformations and invariants.
-
-Integration tests cover interactions with real or fixture-backed astronomical workflows.
-
-Small deterministic fixtures belong under `tests/fixtures/`; mission archives and large FITS products do not belong in Git.
-
-Synthetic transit injection/recovery is preferred for testing detection correctness because the injected truth is controlled independently by the test.
-
-## Documentation boundary
-
-`ASTRO_HUNTER_TECHNICAL_GUIDE.md` explains the science and implemented methodology.
-
-`ARCHITECTURE.md` explains software boundaries.
-
-`AGENTS.md` governs automated coding agents.
-
-`CLAUDE.md` adapts the shared agent rules for Claude Code without duplicating them.
-
-`decisions.md` records why each scientific parameter has its current value, and
-which decisions are still open. Methodology rationale belongs there, not here.
+`AGENTS.md` holds scientific invariants and shared agent rules. `CLAUDE.md`
+adapts them for Claude Code. `docs/decisions.md` records why each parameter and
+each structural choice is what it is — read it before changing any of them.
+`docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md` explains the photometry.

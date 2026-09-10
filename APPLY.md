@@ -1,115 +1,99 @@
-# Come applicare questo pacchetto
+# Riorganizzazione: da pipeline di detection a triage
 
-Sette file, di cui cinque sostituiscono file esistenti e due sono nuovi.
-`APPLY.md` non va committato: cancellalo alla fine.
+Tre commit separati, in quest'ordine. La motivazione prima della struttura,
+la struttura prima della narrazione.
 
-## 1. Scompatta sopra il repo
-
-Dalla radice di `astro-hunter/`, con il working tree pulito:
+## Commit 1 — la decisione
 
 ```bash
-git status                       # deve essere pulito prima di iniziare
-unzip -o astro-hunter-missing.zip -d .
+cd astro-hunter
+git status                                  # working tree pulito
+cat /percorso/docs/D-011-append.md >> docs/decisions.md
+rm docs/D-011-append.md                     # è solo il testo da appendere
+git add docs/decisions.md
+git commit -m "docs: record the scope change from detection to triage (D-011..D-014)
+
+D-011 scope change: detection is crowded and well served; the unsolved
+      problem is triage throughput
+D-012 core is domain-agnostic, domains are plugins
+D-013 benchmark agent verdicts against expert dispositions
+D-014 the agent reports evidence with provenance, never asserts"
+```
+
+## Commit 2 — solo spostamenti
+
+Il codice fotometrico scende sotto il dominio. Nessuna modifica di contenuto,
+così il diff si legge come "ho mosso roba".
+
+```bash
+mkdir -p src/astro_hunter/domains/exoplanets/photometry
+git mv src/astro_hunter/tess.py           src/astro_hunter/domains/exoplanets/photometry/
+git mv src/astro_hunter/preprocessing.py  src/astro_hunter/domains/exoplanets/photometry/
+git mv src/astro_hunter/detection.py      src/astro_hunter/domains/exoplanets/photometry/
+git mv src/astro_hunter/models.py         src/astro_hunter/domains/exoplanets/photometry/
+git mv src/astro_hunter/characterization.py src/astro_hunter/domains/exoplanets/photometry/
+git mv src/astro_hunter/acquisition.py    src/astro_hunter/domains/exoplanets/photometry/
+git rm src/astro_hunter/pipeline.py       # sostituito da core/evidence.py + core/agent.py
+git rm APPLY.md                            # residuo del commit precedente
+
+git commit -m "refactor: move the photometric pipeline under the exoplanets domain
+
+Structural only, no content changes. Implements the core/domain split
+recorded as D-012."
+```
+
+## Commit 3 — il resto
+
+Scompatta lo zip sopra il repo, poi:
+
+```bash
 rm APPLY.md
-```
-
-`-o` sovrascrive senza chiedere. I file toccati sono elencati sotto: se ne hai
-modificato qualcuno dopo il push di ieri, controlla il diff prima di committare.
-
-## 2. Elimina il file rinominato
-
-`docs/decision.md` diventa `docs/decisions.md` (plurale), che è il nome a cui
-`CLAUDE.md` punta già.
-
-```bash
-git rm docs/decision.md
-```
-
-Il nuovo `docs/decisions.md` contiene tutto il vecchio contenuto invariato più
-le voci D-009 e D-010. Nessuna decisione esistente è stata riscritta.
-
-## 3. Verifica
-
-```bash
-git status
-git diff --cached --stat
-grep -rn "decisions.md\|decision.md" CLAUDE.md docs/ README.md
-grep -rn "section 24" CLAUDE.md
-```
-
-L'ultimo `grep` non deve trovare niente in `CLAUDE.md`: quel riferimento è stato
-sostituito con un rimando alla guida tecnica.
-
-## 4. Commit
-
-```bash
 git add -A
-git commit -m "docs: recover technical guide, add licence, fix broken references
+git commit -m "feat: scaffold domain-agnostic triage core
 
-- restore the technical guide from eaa8b24, where it lived as README.md
-  before the restructure; heading levels normalised, content unchanged
-- rename decision.md -> decisions.md to match the reference in CLAUDE.md
-- add D-009 (symmetric vs asymmetric clipping) and D-010 (synthetic injection)
-- replace the dead 'section 24' reference in CLAUDE.md
-- mark ARCHITECTURE.md as target architecture, flag unimplemented paths
-- correct the project structure in README.md to match the actual tree
-- add MIT licence"
+- core/models.py: Signal, Evidence, Dossier, Verdict. Evidence cannot be
+  constructed without a source, which enforces D-014 structurally
+- core/{queue,evidence,agent,tools,metrics}.py: documented placeholders
+- domains/exoplanets/{domain,catalogs,instrumental}.py
+- sources/toi.py with benchmark and triage modes kept separate
+- config/domains/exoplanets.yaml
+- tests/benchmark/ with the evaluation method
+- ARCHITECTURE.md and README rewritten for the new scope"
 git push
 ```
 
----
+## Cosa contiene lo zip
 
-## Cosa c'è nel pacchetto
-
-| File | Stato | Cosa cambia |
-|---|---|---|
-| `LICENSE` | nuovo | MIT. Cambia il nome se lo vuoi diverso. |
-| `docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md` | nuovo | Il diario tecnico recuperato da `eaa8b24`. |
-| `docs/decisions.md` | sostituisce `decision.md` | Contenuto invariato + D-009, D-010. |
-| `CLAUDE.md` | sostituito | Riferimenti morti corretti + sezione "Current state". |
-| `docs/ARCHITECTURE.md` | sostituito | Sezione "Status" + marcatori ⧗ sui path non implementati. |
-| `README.md` | sostituito | Struttura reale del progetto + link ai tre documenti. |
-| `docs/assets/README.md` | nuovo | Placeholder: quali figure servono e dove. |
-| `.gitignore` | sostituito | Aggiunge `.claude/settings.local.json` e `CLAUDE.local.md`. |
-
-Non toccati: `AGENTS.md`, `development_rules.md`, `.claude/settings.json`,
-`.claude/skills/document-stage/SKILL.md`, tutto `src/` e `scripts/`.
-
-## Sulla guida tecnica recuperata
-
-Il contenuto è identico all'originale. L'unica modifica è ai livelli di heading:
-le sezioni erano `# N.` invece di `## N.`, quindi il documento renderizzava come
-venticinque titoli tutti allo stesso livello, senza gerarchia. Ora l'unico `h1`
-è il titolo.
-
-Due cose da sistemare quando hai tempo, non urgenti:
-
-- la sezione 21 elenca cosa non c'è ancora, ma è scritta rispetto allo stato di
-  inizio settembre. Rileggila quando il refactor di `detection.py` è fatto.
-- la guida è in italiano, il resto del repo in inglese. Va benissimo così se è
-  una scelta: la guida è divulgativa, il codice e l'architettura sono tecnici.
-  Se invece vuoi uniformare, fallo in un commit dedicato — non mescolare una
-  traduzione con modifiche di contenuto.
+| Percorso | Nota |
+|---|---|
+| `README.md` | riscritto. Include "Where this project came from" |
+| `docs/ARCHITECTURE.md` | riscritto: core/domain, contratto evidenze, valutazione |
+| `docs/D-011-append.md` | **da appendere a decisions.md, non da committare** |
+| `src/astro_hunter/core/models.py` | implementato e verificato |
+| `src/astro_hunter/core/*.py` | placeholder documentati |
+| `src/astro_hunter/domains/exoplanets/*.py` | placeholder documentati |
+| `src/astro_hunter/sources/toi.py` | placeholder documentato |
+| `config/domains/exoplanets.yaml` | soglie e cataloghi fuori dal codice |
+| `tests/benchmark/README.md` | metodo di valutazione |
+| `scripts/10_triage.py` | entry point, non implementato |
 
 ## Restano da fare a mano
 
-Due cose che non stanno in uno zip:
+**Descrizione GitHub.** Quella attuale descrive ancora il progetto vecchio.
+Proposta:
 
-1. **Descrizione GitHub.** Ancora quella vecchia, che dichiara ML e agenti come
-   presenti mentre il README li mette al futuro. Impostazioni del repo → About.
-   Proposta:
+> Automated triage for astronomical candidate signals — evidence dossiers with
+> full provenance, measured against expert dispositions.
 
-   > Reproducible pipeline for transit detection in public TESS data.
-   > Scientific core first; ML and LLM agents on the roadmap.
+Topics: `astronomy`, `exoplanets`, `tess`, `llm-agents`, `mcp`, `python`.
 
-   Topics utili: `astronomy`, `tess`, `exoplanets`, `lightkurve`,
-   `time-series-analysis`, `python`.
+**`CLAUDE.md`.** La sezione "Current state" descrive il refactor di
+`detection.py` come prossimo passo. Aggiornala: il prossimo passo ora è il
+cross-match sui cataloghi.
 
-2. **Le tre figure** in `docs/assets/`. Sono in `outputs/`, che è gitignorato.
-   Vedi `docs/assets/README.md` per i nomi attesi.
+**`config/targets.csv`** resta dov'è: serve al banco prova fotometrico.
 
-## Il prossimo passo reale
+## Da verificare prima di implementare
 
-D-004 e D-009 sono le uniche due decisioni aperte, sono accoppiate, e bloccano
-l'estrazione di `detection.py`. Sono scientifiche: vanno decise da te, non
-delegate a Claude Code.
+Il catalogo TOI: quali disposizioni espone davvero e come sono codificate.
+Il metodo di D-013 dipende da quello, e non va assunto.

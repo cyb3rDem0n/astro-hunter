@@ -1,150 +1,106 @@
 # Astro Hunter
 
-Astro Hunter is an experimental scientific software project for the automated analysis of public astronomical data.
+Automated triage for astronomical candidate signals.
 
-Its goal is to build a reproducible pipeline capable of identifying and prioritizing potentially interesting signals in large astronomical datasets, starting from **TESS photometric time series** and transit-like events.
+Astro Hunter takes a signal that someone else detected and builds an evidence
+dossier for it: already catalogued, consistent with an instrumental artefact,
+plausibly from a contaminating neighbour, or worth a human's time.
 
-The project is designed both as a scientific exploration platform and as a practical environment for experimenting with modern AI, machine learning, and agent-based architectures.
+It is not a detector. It is the layer between a queue of candidates and the
+person who has to decide which ones to look at.
 
-## What it does
+## The problem
 
-The current pipeline retrieves real TESS observations from public archives and processes stellar light curves to search for periodic decreases in brightness that may be compatible with transit-like events.
+Archives produce more candidates than anyone can examine. TESS had catalogued
+over 7,800 planet candidates by early 2026 with fewer than 720 confirmed, and
+vetting still depends on manual inspection of Data Validation reports.
 
-At a high level:
+Anomaly-detection frameworks hit the same wall from the other side: their
+limiting factor is the expert who has to label the queue, and machine learning
+on its own struggles to separate interesting anomalies from instrumental
+artefacts and uninteresting rare sources.
 
-```text
-Astronomical Open Data
-        ↓
-Data acquisition
-        ↓
-Preprocessing
-        ↓
-Signal detection
-        ↓
-Candidate characterization
-        ↓
-Scientific validation
-```
+The per-candidate work behind that bottleneck is mostly cross-referencing, not
+astrophysics. Is this object catalogued? Is there literature? Does the dip
+coincide with a known instrumental event? Is there a contaminating source in
+the aperture?
 
-The first implementation focuses on **Box Least Squares (BLS)** analysis of TESS light curves, including detrending, period search, transit duration estimation, phase folding, and quantitative characterization of detected candidates.
+That is what this project automates.
 
-The project follows a strict principle:
+## How it works
 
-> Detection is not discovery.
+**Input** — a signal: identifier, coordinates, period, epoch, depth.
 
-A statistically interesting signal is treated as a **candidate** until it has been independently checked against observational quality, known catalogs, possible false positives, and other scientific evidence.
+**Processing** — an agent orchestrating deterministic tools: catalog
+cross-match, instrumental-window checks, literature search, neighbour analysis.
 
-## Why Astro Hunter
+**Output** — a dossier. Every statement carries its source: catalog name,
+matched identifier, angular separation, retrieval time. Plus a verdict and a
+confidence, labelled as the agent's own summary.
 
-Modern astronomical surveys generate far more data than can be inspected manually.
+**The rule.** The agent never produces a scientific number and never states
+anything without a source. Numbers come from tools. An astronomer can check the
+output without redoing the work.
 
-Astro Hunter explores how automated analysis can help reduce this enormous search space by identifying unusual, statistically significant, or poorly classified signals that deserve closer investigation.
+## How it is measured
 
-The long-term objective is not limited to finding exoplanet transits. The same architecture can evolve toward broader astronomical anomaly detection and time-domain analysis.
+Not demonstrated — measured.
 
-## AI integration
+The TOI catalog carries dispositions assigned by human experts. Hide the
+disposition, run the agent, compare the verdict. Precision, recall, confusion
+matrix, on real data with labels this project did not create.
 
-AI will be introduced only after the underlying scientific pipeline is reliable and reproducible.
+This shows the agent judges as an expert would. It does not show discovery:
+labelled candidates have already been vetted. Discovery means pointing the
+system at unlabelled queues, which is only meaningful once accuracy is
+established.
 
-The planned architecture separates numerical astronomy from AI reasoning:
+## Status
 
-```text
-Scientific Pipeline
-        ↓
-Candidate Data
-        ↓
-Machine Learning
-        ↓
-Anomaly / Priority Score
-        ↓
-LLM Agents
-   ┌────┼────┐
-Catalog Research
-Literature Search
-Scientific Reasoning
-False-positive Analysis
-        ↓
-Candidate Report
-```
+Early. The photometric proving ground works; the triage layer is documented and
+scaffolded, not implemented.
 
-Machine learning models will be used to identify unusual patterns and rank candidates across large populations of astronomical objects.
+| Component | State |
+|---|---|
+| TESS acquisition and preprocessing | working |
+| BLS transit search | working, validated on Pi Mensae |
+| Core triage models | implemented |
+| Catalog cross-match | not implemented |
+| Agent loop | not implemented |
+| Benchmark against dispositions | not implemented |
 
-LLM-based agents will operate as scientific assistants rather than numerical detectors. Their role will be to use tools and external scientific resources to:
+## Where this project came from
 
-- investigate detected candidates;
-- query astronomical catalogs;
-- compare independent observations;
-- search scientific literature;
-- generate and evaluate possible explanations;
-- identify potential false positives;
-- produce structured investigation reports.
+It began as a transit-detection pipeline. That part works and is documented in
+[`docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md`](docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md),
+including the case where the search returned a confident wrong period until the
+light curve was detrended — the concrete reason behind the project's
+"detection is not discovery" principle.
 
-The numerical detection of astronomical signals will remain handled by deterministic scientific algorithms and machine-learning models rather than by the LLM itself.
+Looking at where the real bottleneck sits changed the focus. Detection is
+crowded and well served by mature tools; triage throughput is not. The scope
+change and its reasoning are recorded as D-011 in
+[`docs/decisions.md`](docs/decisions.md).
 
-## Scientific principles
+The photometric pipeline is kept: it proves the project handles real
+observational data, and it will eventually produce queues of its own.
 
-Astro Hunter is developed around a few core principles:
+## Principles
 
-- **Reproducibility** — results must be traceable to data, configuration, and algorithms.
-- **Scientific separation** — acquisition, preprocessing, detection, characterization, and validation remain distinct stages.
-- **Blind detection** — known catalog values are not used to force the detection of expected signals.
-- **Explicit uncertainty** — measurements and approximations must expose their statistical meaning.
-- **Conservative interpretation** — a candidate signal is not automatically classified as an astrophysical discovery.
+- Detection is not discovery. A signal is a candidate until evidence says
+  otherwise.
+- Absence of data is not absence of signal.
+- Every claim carries its source, or it is not made.
+- Cleaning is conservative: points are never removed for making a candidate
+  less convenient.
+- Cheap checks run first. Expensive ones run only on what survives.
 
-## Current scope
+## Documentation
 
-The current implementation works with TESS light curves retrieved from MAST and includes:
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — structural boundaries
+- [`docs/decisions.md`](docs/decisions.md) — why each choice is what it is
+- [`docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md`](docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md) — the photometry
 
-- acquisition of SPOC photometric products;
-- light-curve cleaning and normalization;
-- detrending;
-- Box Least Squares transit search;
-- periodogram generation;
-- phase folding;
-- quantitative candidate characterization.
+## Licence
 
-The initial reference target is **Pi Mensae (TIC 261136679)**, used to validate the scientific pipeline against a known transit signal without providing its known orbital period to the detection algorithm.
-
-## Project structure
-
-```text
-astro-hunter/
-├── data/            raw and processed observational products (gitignored)
-├── docs/            scientific guide, architecture, decision log
-├── notebooks/       exploratory analysis
-├── outputs/         generated figures and results (disposable)
-├── scripts/         reproducible command-line entry points
-└── src/
-    └── astro_hunter/
-```
-
-The target architecture — including the layer modules and test layout still to
-be implemented — is described in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
-
-Documentation:
-
-- [`docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md`](docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md)
-  — the science: what a light curve is, why detrending was necessary, how to
-  read a periodogram, and a development diary of what worked and what did not.
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — software boundaries.
-- [`docs/decisions.md`](docs/decisions.md) — why each scientific parameter has
-  its current value, and which decisions are still open.
-
-## Technology
-
-Core technologies currently include:
-
-```text
-Python
-NumPy
-Astropy
-Lightkurve
-Matplotlib
-MAST / TESS Open Data
-```
-
-The AI layer will progressively introduce machine learning, structured LLM tool use, and agent orchestration while keeping the scientific core independently testable.
-
----
-
-**Astro Hunter is ultimately an experiment in AI-assisted scientific discovery: using astronomical open data, quantitative analysis, and autonomous research tools to identify signals worth investigating.**
+MIT.

@@ -548,3 +548,70 @@ identifies signals explained by the instrument, which is a different and far
 cheaper claim.
 
 **Status.** Active. Implemented in `instrumental.py`.
+
+---
+
+## D-021 — Collect everything; derive a rule-based verdict as the baseline
+
+**Two decisions, taken together because they interact.**
+
+### Every check runs, always
+
+Collection does not stop at the first conclusive result. A confirmed-planet
+match with an identical period settles the case, but the aperture is queried
+anyway.
+
+*Rationale.* Stopping early saves queries and produces a dossier that cannot be
+re-judged later without returning to the archives. Evidence is cheap to keep
+and expensive to re-acquire, and a verdict that has to be revised — because a
+threshold moved, or a catalog was updated — should be revisable from what was
+already collected.
+
+*Consequence.* Cost per signal is roughly constant rather than
+best-case-optimised. Acceptable at this scale; revisit if a queue makes it
+prohibitive.
+
+### A failing check is evidence, not an exception
+
+A check that raises is recorded with its error and its own source, and
+collection continues. "The archive was unreachable" and "the archive returned
+nothing" support opposite conclusions, and the rules treat them differently: an
+incomplete run yields `INSUFFICIENT`, never `INTERESTING`.
+
+This is the project's "absence of data is not absence of signal" invariant
+applied at the orchestration layer.
+
+### The verdict is rule-derived, and it is the baseline
+
+`derive_verdict` applies ordered rules and returns a verdict, a confidence and
+a stated reason. It calls no language model.
+
+*Rationale.* The agent has to be measured against something. A rule engine that
+scores well is worth keeping; an agent that cannot beat it is not worth its
+cost. Neither conclusion is available without measuring both, and the rules are
+free to run over the whole labelled set while the agent is not.
+
+*On the confidences.* They are fixed per rule and express how decisive the rule
+is. They are not probabilities and must never be reported as such — that is
+exactly the unfounded number D-014 exists to prevent.
+
+*Rule order.* A catalogued planet at a matching period wins over everything: no
+aperture or instrumental finding changes what that object is. Instrumental
+explanations come next, being cheaper and more decisive than contamination.
+Contamination precedes "nothing found". A catalogued host at an *unrelated*
+period yields `INTERESTING`, not `KNOWN` — that is the additional-planet case,
+and collapsing it would remove the system's ability to find planets in known
+systems.
+
+### Known ceiling
+
+The rules cannot produce `EXPLAINED`. Distinguishing an eclipsing binary *on*
+the target from one nearby needs odd/even depth comparison and a secondary
+eclipse search, neither of which is implemented. On-target `FP` cases will
+therefore score as `CONTAMINATED` at best.
+
+This bounds the baseline's achievable score on 15.8 % of the catalog, and it
+must be stated when the benchmark is reported rather than discovered in the
+confusion matrix.
+
+**Status.** Active. Implemented in `core/evidence.py`.

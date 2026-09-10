@@ -488,3 +488,63 @@ flux. At most 15 neighbours reported, because tool output is paid for in
 context tokens.
 
 **Status.** Active. Implemented in `neighbours.py`.
+
+---
+
+## D-020 — Instrumental checks read the observing record, not a catalog
+
+**Decision.** Instrumental artefacts are assessed from the light curve's own
+timestamps and SPOC quality flags, not from an external table of spacecraft
+events. `instrumental.py` performs no network access.
+
+**Rationale.** Momentum dumps, scattered-light windows and orbit boundaries are
+already recorded per cadence in the SPOC quality column. Scraping data release
+notes would reproduce that information less reliably, and would tie the module
+to a document format outside the project's control.
+
+More importantly, the question worth asking is not "did a spacecraft event
+occur in this sector" but "do *this signal's* transits coincide with one".
+That is a property of the ephemeris against the observing record, and it can
+only be answered where both are present.
+
+**Three checks, three distinct failures.**
+
+*Coincidence with flagged cadences.* A blind search knows nothing about the
+spacecraft, so a periodicity in the observing pattern is indistinguishable to
+it from a periodicity in the star. Transits sitting preferentially on flagged
+cadences are following the instrument.
+
+*Coincidence with gaps.* Data gaps are themselves periodic — orbit downlinks,
+sector boundaries — so a search can settle on a period that places its events
+inside them. The signature is that the predicted transits are largely
+unobserved, which makes the period an alias of the observing window rather than
+a property of the star.
+
+*Insufficient coverage.* One covered event fixes an epoch, never a period: any
+period whose next transit falls beyond the baseline fits equally well. Counting
+events with real coverage is therefore kept separate from counting events the
+ephemeris predicts, and the two numbers are both reported.
+
+**Flag selection.** Suspicious: attitude tweak, safe mode, coarse point, Earth
+point, desaturation, manual exclude, both stray-light flags, planet-search
+exclude, bad-calibration exclude. Bitmask 30895.
+
+Deliberately excluded: cosmic rays in the aperture and in collateral data, and
+impulsive outliers. These are single-cadence events that outlier rejection
+already removes, and counting them would mark healthy data as instrumental.
+Flag values are read from `lightkurve.utils.TessQualityFlags` rather than
+hardcoded.
+
+**Thresholds.** Coverage below 50 % means a predicted transit counts as
+unobserved. Fewer than two covered transits means the period is not
+established. More than 30 % flagged in-transit cadences raises an alert.
+
+**Missing quality data is declared, not assumed clean.** A light curve without
+a quality column is assessed for gaps only, and the evidence records that flags
+were unavailable — otherwise absent flags would read as absent problems.
+
+**What this does not do.** It never establishes that a signal is real. It
+identifies signals explained by the instrument, which is a different and far
+cheaper claim.
+
+**Status.** Active. Implemented in `instrumental.py`.

@@ -289,3 +289,133 @@ A verdict and a confidence are permitted, because they are the agent's own
 summary of the evidence and are labelled as such.
 
 **Status.** Active. Binding on all agent prompts and output schemas.
+
+
+---
+
+## D-015 — `tfopwg_disp` is the reference label; the label set is pinned
+
+**Decision.** The TFOPWG disposition column `tfopwg_disp` in the NASA Exoplanet
+Archive `toi` table is the reference label for evaluating agent verdicts
+(D-013). The evaluation set is **pinned to a dated snapshot**, not read live.
+
+**What the catalog actually contains.** Verified against the live archive on
+2026-09-10 and recorded in `docs/toi-schema-snapshot.md`: 8,148 rows,
+90 columns, one disposition column.
+
+| value | meaning | rows | share |
+|---|---|---:|---:|
+| `PC` | planet candidate | 4,836 | 59.4% |
+| `FP` | false positive | 1,290 | 15.8% |
+| `CP` | confirmed planet | 815 | 10.0% |
+| `KP` | known planet (pre-TESS) | 607 | 7.4% |
+| `APC` | ambiguous planet candidate | 486 | 6.0% |
+| `FA` | false alarm | 100 | 1.2% |
+| null | unassigned | 14 | 0.2% |
+
+**Corrections to earlier assumptions.**
+
+The TAP `toi` table exposes a single disposition column. The TESS Project
+disposition, referenced separately in the literature, is not present here; it
+lives on ExoFOP. There is no choice to make between two columns.
+
+99.8% of rows carry a label, so nearly the whole catalog is usable. The 14
+unlabelled rows are excluded from evaluation rather than treated as a class.
+
+**Metrics.** The classes are heavily imbalanced: answering `PC` for every row
+scores 59.4% without doing anything. **Raw accuracy is therefore forbidden as a
+headline metric** — it measures the catalog's imbalance, not the agent.
+
+Reported instead: precision, recall and F1 **per class**, plus the macro
+average. Any run is compared against the 59.4% majority-class baseline, and a
+result below it is reported as a failure regardless of what the per-class
+numbers look like.
+
+**Why pinned.** `rowupdate` on the reference target reads 2026-08-13:
+dispositions are revised as follow-up accumulates. Evaluating against a live
+catalog means comparing today's verdicts to labels that have moved since the
+last run, which makes results incomparable across time. The snapshot is
+committed; a refresh is a deliberate commit with a new date, and results are
+reported against the snapshot they used.
+
+**Status.** Active.
+
+---
+
+## D-016 — In benchmark mode the TOI cross-match is withheld from the agent
+
+**Decision.** When evaluating against TOI dispositions, the TOI catalog is not
+available as an agent tool. The agent must reach its verdict from independent
+evidence.
+
+**Rationale.** Every benchmark item is in the TOI catalog by construction. A
+tool that answers "is this in TOI?" returns yes for all 8,148 cases, so the
+task collapses and the metric measures nothing.
+
+Hiding the disposition column is not sufficient. The *presence of the row* is
+itself the leak, because being a TOI is what the agent is implicitly being
+asked to assess.
+
+**What remains available, and what each is expected to catch.**
+
+| Evidence source | Target dispositions |
+|---|---|
+| Confirmed-planet tables (`ps`, `pscomppars`) | `KP`, `CP` |
+| Instrumental window checks | `FA` |
+| Neighbour analysis, odd/even depth, secondary eclipse | `FP` |
+| Nothing found by any check | `PC` |
+
+This makes the benchmark non-trivial and well posed: each class has a distinct
+evidence path that does not depend on the label source.
+
+**Consequence.** The restriction belongs in the tool registry, alongside the
+benchmark/triage split already required in `sources/toi.py`. It is enforced by
+which tools are registered, not by asking the agent not to look.
+
+**In triage mode the TOI cross-match is available and expected** — there, "is
+this already a known TOI" is exactly the question worth asking cheaply.
+
+**Status.** Active. Not yet implemented.
+
+---
+
+## D-017 — `EXPLAINED` added to `Verdict`; disposition mapping
+
+**Decision.** A sixth verdict, `EXPLAINED`, is added to
+`astro_hunter.core.models.Verdict`: a known astrophysical explanation exists
+for the signal, on the target itself, and it is not what the domain is looking
+for.
+
+**Rationale.** The original five verdicts had no place for `FP`, which is 15.8%
+of the catalog. A TESS false positive covers two distinct situations: an
+eclipsing binary *near* the target whose light enters the aperture, which is
+`CONTAMINATED`, and an eclipsing binary *on* the target star. The second is a
+real astrophysical signal, correctly located, that simply is not a planet.
+
+`EXPLAINED` stays domain-agnostic: the core states that an explanation exists,
+and the domain decides what counts as one. The word "planet" does not enter
+`core/`.
+
+**Mapping.**
+
+| Disposition | Verdict | Note |
+|---|---|---|
+| `KP` | `KNOWN` | catalogued before TESS |
+| `CP` | `KNOWN` | confirmed through follow-up |
+| `FA` | `INSTRUMENTAL` | retracted; not a real astrophysical signal |
+| `FP` | `EXPLAINED` **or** `CONTAMINATED` | either scores as correct |
+| `PC` | `INTERESTING` | survives every check, unresolved |
+| `APC` | `INSUFFICIENT` | followed up, inconclusive |
+| null | excluded | not a class |
+
+**On the `FP` row.** The disposition does not distinguish on-target from
+nearby, so a single correct verdict cannot be assigned. Scoring accepts either,
+and the confusion matrix records which was produced. If the split later matters,
+the source of truth is the ExoFOP comments field, not this column.
+
+**On `APC`.** Mapping to `INSUFFICIENT` is a judgement, not an equivalence.
+`APC` means follow-up happened and was inconclusive; `INSUFFICIENT` means the
+agent could not gather enough. They coincide in outcome, not in cause. Revisit
+if this class scores anomalously in either direction.
+
+**Status.** Active. `EXPLAINED` implemented; the mapping is not.

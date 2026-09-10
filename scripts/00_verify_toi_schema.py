@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import sys
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pyvo
@@ -49,22 +49,32 @@ def discover_columns(service) -> list[tuple[str, str, str]]:
     return out
 
 
+MAX_DISTINCT = 50
+
+
 def find_disposition_columns(columns) -> list[str]:
-    """Locate disposition columns by name or description, rather than guessing."""
-    found = []
-    for name, _dtype, desc in columns:
-        haystack = f"{name} {desc}".lower()
-        if "disp" in haystack:
-            found.append(name)
-    return found
+    """Locate disposition columns by column NAME only.
+
+    Searching the description as well matched `rastr` and `decstr`, whose
+    descriptions contain "displayed". Names are the reliable signal.
+    """
+    return [name for name, _dtype, _desc in columns if "disp" in name.lower()]
 
 
-def distribution(service, column: str) -> Counter:
+def distribution(service, column: str) -> Counter | None:
+    """Value counts for a column, or None if it is not categorical.
+
+    A column with hundreds of distinct values is an identifier or a coordinate,
+    not a disposition. Dumping it produced a 483 KB snapshot with 40 useful
+    lines, so cardinality is checked before the values are written out.
+    """
     rows = query(service, f"""
         SELECT {column}, COUNT(*) AS n
         FROM {TABLE}
         GROUP BY {column}
     """)
+    if len(rows) > MAX_DISTINCT:
+        return None
     counts = Counter()
     for r in rows:
         key = r[column]
@@ -100,8 +110,12 @@ def main() -> None:
     distributions = {}
     for col in disp_cols:
         try:
-            distributions[col] = distribution(service, col)
-            print(f"  {col}: {len(distributions[col])} distinct values")
+            counts = distribution(service, col)
+            if counts is None:
+                print(f"  {col}: skipped, more than {MAX_DISTINCT} distinct values")
+                continue
+            distributions[col] = counts
+            print(f"  {col}: {len(counts)} distinct values")
         except Exception as exc:  # noqa: BLE001 - one failing column must not stop the rest
             print(f"  {col}: query failed ({exc})")
 
@@ -112,7 +126,7 @@ def main() -> None:
         print("reference target NOT found - check the TIC column name")
 
     # --- snapshot -----------------------------------------------------------
-    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    stamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
     lines = [
         "# TOI catalog schema snapshot",
         "",

@@ -16,13 +16,28 @@ from enum import Enum
 
 
 class Verdict(str, Enum):
-    """The agent's summary of the evidence. Not a scientific claim."""
+    """The agent's summary of the evidence. Not a scientific claim.
+
+    Domain-agnostic by construction: the core states that an explanation
+    exists, and the domain decides what counts as one. See D-017.
+    """
 
     KNOWN = "known"                  # already catalogued or published
     INSTRUMENTAL = "instrumental"    # consistent with a known artefact
     CONTAMINATED = "contaminated"    # plausibly from a nearby source
+    EXPLAINED = "explained"          # real, on target, not what we look for
     INTERESTING = "interesting"      # survives every cheap check
     INSUFFICIENT = "insufficient"    # not enough evidence to place it
+
+    @property
+    def is_resolved(self) -> bool:
+        """True when the signal needs no further human attention."""
+        return self in {
+            Verdict.KNOWN,
+            Verdict.INSTRUMENTAL,
+            Verdict.CONTAMINATED,
+            Verdict.EXPLAINED,
+        }
 
 
 class EvidenceKind(str, Enum):

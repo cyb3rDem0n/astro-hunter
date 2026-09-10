@@ -1,6 +1,6 @@
-import numpy as np
 import lightkurve as lk
 import matplotlib.pyplot as plt
+import numpy as np
 
 TARGET = "TIC 261136679"
 SECTOR = 1

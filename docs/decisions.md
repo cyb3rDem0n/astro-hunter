@@ -419,3 +419,72 @@ agent could not gather enough. They coincide in outcome, not in cause. Revisit
 if this class scores anomalously in either direction.
 
 **Status.** Active. `EXPLAINED` implemented; the mapping is not.
+
+---
+
+## D-018 — Catalog query conventions
+
+**Decisions**, applying to every catalog module.
+
+**`pscomppars`, not `ps`.** The composite-parameters table carries one row per
+planet with a consolidated parameter set; `ps` carries one row per published
+reference and would return the same planet several times.
+
+**Bounding box in ADQL, exact separation in astropy.** Support for ADQL
+geometry (`CONTAINS`, `POINT`, `CIRCLE`) varies between services and versions;
+comparison operators do not. The box over-selects, then the true angular
+separation is computed locally.
+
+This is not only portability. Right ascension converges towards the poles, so a
+raw difference in RA understates separation by 1/cos(dec) — a factor of six at
+the reference target's declination of −80°. Delegating this to astropy removes
+a class of error that would appear only at high declination, where it is
+hardest to notice.
+
+**An unreachable service raises; it never returns empty.** A network failure
+and "nothing catalogued here" support opposite conclusions. Conflating them
+would let an outage read as a clean result, which is the project's
+"absence of data is not absence of signal" invariant applied to catalogs.
+
+**Status.** Active. Implemented in `catalogs.py` and `neighbours.py`.
+
+---
+
+## D-019 — Aperture contamination: dilution and exclusion
+
+**Decision.** Contaminating flux in the aperture is assessed from Gaia DR3
+magnitudes, and reported as two distinct quantities.
+
+**Dilution** — the fraction of aperture flux belonging to the target.
+Contaminating light is constant while the target dips, so it fills in the
+transit and every measured depth understates the truth. The corrected depth is
+the observed depth divided by the dilution factor. A planet radius derived from
+an uncorrected depth is systematically too small.
+
+**Maximum producible depth** — for each neighbour, the deepest dip it could
+cause if totally eclipsed, which is its own share of the aperture flux. Nothing
+a source does can remove more light than it emits, so this is an upper bound
+rather than an estimate, and a neighbour whose bound falls below the observed
+depth is *excluded* as the origin.
+
+That exclusion is what makes the check rigorous rather than suggestive. For a
+321 ppm signal, any source fainter than the target by more than 8.7 magnitudes
+cannot account for it, whatever it is doing.
+
+**Scope, and what this is not.** The aperture is treated as a sharp circle and
+the pixel response function is ignored, so flux fractions are approximations.
+Gaia G is used directly rather than converted to the TESS band, which
+introduces a colour-dependent error.
+
+This is therefore a **screening** tool: good for ranking candidates and for
+excluding sources, not for validating one. Statistical validation needs a tool
+that models the pixel response and the full population of possible
+contaminants, such as TRICERATOPS. Nothing in this module should be reported as
+a false-positive probability.
+
+**Parameters.** Aperture radius 60 arcsec, roughly three TESS pixels.
+Magnitude limit target + 8, below which a source holds less than 0.1 % of the
+flux. At most 15 neighbours reported, because tool output is paid for in
+context tokens.
+
+**Status.** Active. Implemented in `neighbours.py`.

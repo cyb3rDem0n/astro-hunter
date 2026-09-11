@@ -10,6 +10,7 @@ dependencies = [
     "matplotlib>=3.7",
     "pyyaml>=6.0",
     "pyvo>=1.5",
+    "fastmcp>=3.0",
 ]
 
 [project.optional-dependencies]

@@ -746,3 +746,52 @@ conversion, rather than relying on the nan produced downstream.
 
 **Status.** Active. Implemented in `sources/toi.py`, regression-tested with
 `warnings.simplefilter("error")` so the fix cannot silently regress.
+
+---
+
+## D-023 — The MCP surface exposes evidence, never a verdict
+
+**Decision.** The MCP tools return findings from the checks. They do not expose
+`derive_verdict`, and no tool description mentions a verdict.
+
+**Rationale.** The rule engine is the baseline the agent is measured against
+(D-021). An agent able to read the rule verdict would anchor on it, and the
+comparison would measure agreement rather than capability. The two must reach
+their conclusions independently; the comparison happens offline, over the
+stored dossiers.
+
+A unit test asserts that no tool name, description or parameter contains the
+word "verdict", so the leak cannot reappear by accident.
+
+**Status.** Active. Enforced by test.
+
+---
+
+## D-024 — Tool design constraints for agent use
+
+**Three constraints**, each addressing a specific failure mode.
+
+**Results are small.** Row counts are capped at ten and payloads are flattened
+to what a verdict needs. A tool result is paid for in context tokens and read by
+a model with no memory of the previous call; returning a full catalog row set is
+expensive and unhelpful. Full evidence objects stay on the Python side, where
+the rule engine reads them.
+
+**Errors are returned, not raised.** A tool that raises ends the agent loop.
+Each tool returns `{"error": ..., "hint": ...}` instead, and the hint states the
+interpretation explicitly — "the archive is unreachable; this is not evidence of
+absence". Without that, a model reads a failed query as a clean result, which is
+the project's "absence of data is not absence of signal" invariant violated at
+the tool boundary.
+
+**Descriptions carry the reasoning, not just the signature.** A model selects a
+tool by reading its description, so each one states when to use it, what the
+result means, and what it must not be read as. `check_aperture_contamination`
+says outright that its numbers are a screening estimate and must not be reported
+as false-positive probabilities — the place that instruction is most likely to
+be read is the tool that produces the numbers.
+
+A test requires every description to exceed 120 characters. Crude, but it fails
+when someone replaces a description with a one-line summary.
+
+**Status.** Active. Implemented in `mcp/server.py`.

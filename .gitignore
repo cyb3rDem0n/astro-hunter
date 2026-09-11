@@ -47,7 +47,6 @@ data/cache/
 
 # Reproducible processed/generated data
 data/processed/
-outputs/
 
 # Keep directories when otherwise empty
 !data/raw/.gitkeep

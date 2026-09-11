@@ -61,3 +61,4 @@ data/processed/
 # Claude Code local-only settings (machine-specific, not shared)
 .claude/settings.local.json
 CLAUDE.local.md
+runs/

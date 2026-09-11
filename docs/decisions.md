@@ -795,3 +795,111 @@ A test requires every description to exceed 120 characters. Crude, but it fails
 when someone replaces a description with a one-line summary.
 
 **Status.** Active. Implemented in `mcp/server.py`.
+
+---
+
+## D-027 — The agent loop: guardrails and output contract
+
+**What an agent is here.** A loop. The model receives the signal and the tool
+list, and replies either with a tool call — which the code executes, returning
+the result — or with a final answer. The API keeps no state, so the whole
+conversation is re-sent every turn.
+
+That last property is why the guardrails are not optional: cost grows with the
+square of the turn count, not linearly, and a model that loops spends real
+money doing it.
+
+**Three guardrails.**
+
+*Iteration ceiling*, default eight. A model that cannot decide keeps calling
+tools. The loop stops and records that it stopped — a result, not a failure.
+
+*Token budget*, default 60,000, checked against the running total after each
+turn. Stopping before the next request rather than after discovering the
+overrun is the difference between a cap and a report.
+
+*Result truncation*, default 6,000 characters. A tool returning an unexpectedly
+large payload would otherwise be paid for in full.
+
+**The output contract.** The verdict is submitted through a `submit_verdict`
+tool rather than written in prose, so the result is structured by construction
+instead of parsed out of free text. A model that answers in prose is recorded
+as `no_verdict_submitted` rather than having a verdict inferred from its words.
+
+`submit_verdict` is the agent's *output channel*, not an evidence source.
+D-023 forbids exposing the rule engine's verdict to the agent; it does not
+forbid the agent from stating its own.
+
+**Failures are outcomes, not exceptions.** An API error, a raising tool, an
+exhausted budget: each ends the run with a recorded `stop_reason` and no
+verdict. Nothing in this loop raises into the caller, because a batch of six
+hundred signals must not stop because one of them failed.
+
+**Schemas are derived, not duplicated.** `anthropic_tool_schemas` translates
+the MCP server's definitions into the API's format. fastmcp calls the schema
+`parameters`, the API calls it `input_schema`; writing them twice would let a
+tool signature diverge from what the model is told about it.
+
+**The system prompt carries the invariants.** Never state a number that did not
+come from a tool. Never read a tool error as a negative result. An unreachable
+archive is not an empty catalogue. These are the same constraints the code
+enforces structurally where it can, repeated where only the model can honour
+them.
+
+**Status.** Active. Implemented in `core/agent.py`, tested against a scripted
+client so the loop, the guardrails and the failure paths are all covered
+without spending credit.
+
+---
+
+## D-027 — The agent loop: guardrails and output contract
+
+**What an agent is here.** A loop. The model receives the signal and the tool
+list, and replies either with a tool call — which the code executes, returning
+the result — or with a final answer. The API keeps no state, so the whole
+conversation is re-sent every turn.
+
+That last property is why the guardrails are not optional: cost grows with the
+square of the turn count, not linearly, and a model that loops spends real
+money doing it.
+
+**Three guardrails.**
+
+*Iteration ceiling*, default eight. A model that cannot decide keeps calling
+tools. The loop stops and records that it stopped — a result, not a failure.
+
+*Token budget*, default 60,000, checked against the running total after each
+turn. Stopping before the next request rather than after discovering the
+overrun is the difference between a cap and a report.
+
+*Result truncation*, default 6,000 characters. A tool returning an unexpectedly
+large payload would otherwise be paid for in full.
+
+**The output contract.** The verdict is submitted through a `submit_verdict`
+tool rather than written in prose, so the result is structured by construction
+instead of parsed out of free text. A model that answers in prose is recorded
+as `no_verdict_submitted` rather than having a verdict inferred from its words.
+
+`submit_verdict` is the agent's *output channel*, not an evidence source.
+D-023 forbids exposing the rule engine's verdict to the agent; it does not
+forbid the agent from stating its own.
+
+**Failures are outcomes, not exceptions.** An API error, a raising tool, an
+exhausted budget: each ends the run with a recorded `stop_reason` and no
+verdict. Nothing in this loop raises into the caller, because a batch of six
+hundred signals must not stop because one of them failed.
+
+**Schemas are derived, not duplicated.** `anthropic_tool_schemas` translates
+the MCP server's definitions into the API's format. fastmcp calls the schema
+`parameters`, the API calls it `input_schema`; writing them twice would let a
+tool signature diverge from what the model is told about it.
+
+**The system prompt carries the invariants.** Never state a number that did not
+come from a tool. Never read a tool error as a negative result. An unreachable
+archive is not an empty catalogue. These are the same constraints the code
+enforces structurally where it can, repeated where only the model can honour
+them.
+
+**Status.** Active. Implemented in `core/agent.py`, tested against a scripted
+client so the loop, the guardrails and the failure paths are all covered
+without spending credit.

@@ -11,6 +11,7 @@ dependencies = [
     "pyyaml>=6.0",
     "pyvo>=1.5",
     "fastmcp>=3.0",
+    "anthropic>=1.0",
 ]
 
 [project.optional-dependencies]

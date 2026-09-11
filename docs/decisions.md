@@ -903,3 +903,51 @@ them.
 **Status.** Active. Implemented in `core/agent.py`, tested against a scripted
 client so the loop, the guardrails and the failure paths are all covered
 without spending credit.
+
+---
+
+## D-028 — Every archive request has a timeout
+
+**Found by an agent run hanging mid-batch.** The process stopped inside an SSL
+read against a catalog service that had accepted the connection and then
+stopped responding. No error, no progress, and `Ctrl+C` would not interrupt it
+because the wait was inside a blocking socket call.
+
+**Cause.** `requests` has no global timeout setting — it is a per-call argument
+— so a library that calls it on your behalf, as pyvo does, waits indefinitely
+unless told otherwise. None of the three archive modules were telling it
+otherwise.
+
+**Fix.** `core/http.py` provides a session that applies a default timeout of 60
+seconds to every request, and all three modules construct their TAP service
+through it. An explicit timeout in a call still wins, so a caller who knows a
+query is slow can say so.
+
+**Why it matters beyond the annoyance.** A batch of six hundred signals cannot
+be held up by one unresponsive service. A timeout converts silence into an
+error, and the code already knows what to do with an error: `CatalogUnavailable`
+is raised, the tool returns it as data, and the verdict becomes `insufficient`
+rather than being quietly wrong.
+
+The invariant was already stated — absence of data is not absence of signal —
+but a hang produces neither, which is worse than either.
+
+**Status.** Active. Implemented in `core/http.py`, applied in `catalogs.py`,
+`neighbours.py` and `sources/toi.py`.
+
+---
+
+## D-029 — Batch results are written after every signal
+
+**Decision.** `scripts/20_agent_triage.py` writes its output file after each
+signal rather than at the end, and flushes progress output as it goes.
+
+**Rationale.** Runs cost money. A batch that stops halfway — a hang, an
+interrupt, an API outage — must not discard the runs already paid for. Writing
+incrementally makes an interrupted batch a partial result instead of a total
+loss.
+
+Flushing matters for the same reason it took a stalled run several minutes to
+diagnose: buffered output gave no indication of where the process had reached.
+
+**Status.** Active.

@@ -25,6 +25,7 @@ from pathlib import Path
 import numpy as np
 import pyvo
 
+from astro_hunter.core.http import tap_service
 from astro_hunter.core.models import Signal
 
 TAP_URL = "https://exoplanetarchive.ipac.caltech.edu/TAP"
@@ -49,7 +50,8 @@ class QueueUnavailable(RuntimeError):
 
 
 def _service() -> pyvo.dal.TAPService:
-    return pyvo.dal.TAPService(TAP_URL)
+    """A service that times out rather than hanging. See core.http."""
+    return tap_service(TAP_URL)
 
 
 def _number(value):

@@ -35,6 +35,7 @@ import astropy.units as u
 import pyvo
 from astropy.coordinates import SkyCoord
 
+from astro_hunter.core.http import tap_service
 from astro_hunter.core.models import Evidence, EvidenceKind
 
 TAP_URL = "https://gea.esac.esa.int/tap-server/tap"
@@ -58,7 +59,8 @@ class CatalogUnavailable(RuntimeError):
 
 
 def _service() -> pyvo.dal.TAPService:
-    return pyvo.dal.TAPService(TAP_URL)
+    """A service that times out rather than hanging. See core.http."""
+    return tap_service(TAP_URL)
 
 
 def flux_ratio(neighbour_mag: float, target_mag: float) -> float:

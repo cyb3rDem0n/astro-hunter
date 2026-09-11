@@ -130,7 +130,7 @@ def main() -> None:
 
     results, total_cost = [], 0.0
 
-    print(f"{len(cases)} signal(s), model {args.model}\n")
+    print(f"{len(cases)} signal(s), model {args.model}\n", flush=True)
 
     for n, (signal, label) in enumerate(cases, 1):
         run = run_agent(signal, client, schemas, execute_tool,
@@ -146,10 +146,16 @@ def main() -> None:
         record["cost_usd"] = round(cost, 5)
         results.append(record)
 
+        # Written after every signal, not at the end: a batch that stops
+        # halfway must not lose the runs already paid for.
+        if args.out:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(json.dumps(results, indent=2), encoding="utf-8")
+
         status = run.verdict or f"[{run.stop_reason}]"
         print(f"  {n:>3}/{len(cases)}  {signal.signal_id:>14}  "
               f"truth={label:<4} agent={status:<13} "
-              f"{run.iterations} turn(s)  ${cost:.4f}")
+              f"{run.iterations} turn(s)  ${cost:.4f}", flush=True)
 
         if args.verbose:
             if run.reasoning:
@@ -165,8 +171,6 @@ def main() -> None:
     print(f"verdicts submitted: {submitted}/{len(results)}")
 
     if args.out:
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(results, indent=2), encoding="utf-8")
         print(f"wrote {args.out}")
         print("compare against the rule baseline with the metrics step")
 

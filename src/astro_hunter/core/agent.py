@@ -45,8 +45,15 @@ SUBMIT_VERDICT_TOOL = {
     "name": "submit_verdict",
     "description": (
         "Submit your final assessment. Call this once, when you have gathered "
-        "enough evidence or established that you cannot. Do not call it before "
-        "using the evidence tools."
+        "enough evidence or established that you cannot.\n\n"
+        "The verdict must be exactly one of:\n"
+        "  known        - already catalogued or published\n"
+        "  instrumental - consistent with a spacecraft artefact\n"
+        "  contaminated - the signal demonstrably comes from a neighbour, not "
+        "merely that a neighbour could produce it\n"
+        "  explained    - real and on the target, but not a planet\n"
+        "  interesting  - survives every check, unresolved\n"
+        "  insufficient - a check could not run, or no target was found"
     ),
     "input_schema": {
         "type": "object",
@@ -54,32 +61,21 @@ SUBMIT_VERDICT_TOOL = {
             "verdict": {
                 "type": "string",
                 "enum": VERDICT_VALUES,
-                "description": (
-                    "known: already catalogued or published. "
-                    "instrumental: consistent with a spacecraft artefact. "
-                    "contaminated: plausibly from a neighbouring source. "
-                    "explained: real, on the target, but not a planet. "
-                    "interesting: survives every check, unresolved. "
-                    "insufficient: not enough evidence to place it."
-                ),
             },
             "confidence": {
                 "type": "number",
-                "description": "0 to 1. Your own summary of how decisive the "
-                               "evidence is. Not a probability.",
+                "description": "0 to 1. How decisive the evidence is. Not a "
+                               "probability.",
             },
             "reasoning": {
                 "type": "string",
-                "description": (
-                    "Two or three sentences. Every factual claim must state "
-                    "which tool produced it. If you did not retrieve a fact "
-                    "from a tool, do not assert it."
-                ),
+                "description": "Two or three sentences, naming the tool behind "
+                               "every factual claim.",
             },
             "evidence_used": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Names of the tools whose results you relied on.",
+                "description": "Names of the tools you relied on.",
             },
         },
         "required": ["verdict", "confidence", "reasoning"],
@@ -89,8 +85,8 @@ SUBMIT_VERDICT_TOOL = {
 SYSTEM_PROMPT = """You triage candidate astronomical signals.
 
 For each signal you decide whether it is already known, explained by the
-instrument, plausibly caused by a neighbouring star, or worth an astronomer's
-time.
+instrument, demonstrably caused by a neighbouring star, or worth an
+astronomer's time.
 
 Method:
 1. Check the confirmed-planet catalogue first. Most candidates are already
@@ -101,6 +97,30 @@ Method:
    planet, which is more interesting, not less.
 3. Check the aperture for contaminating sources when a depth is available.
 4. Submit a verdict.
+
+HOW TO READ THE APERTURE CHECK. This is the step most easily misread.
+
+'max_producible_depth_ppm' is the deepest dip a neighbour could cause if it
+were TOTALLY eclipsed. It is an upper bound, and it is informative in one
+direction only:
+
+- Below the observed depth: that neighbour is EXCLUDED. It cannot be the
+  source, whatever it is doing. This is a certainty.
+- Above the observed depth: nothing is established. Almost every neighbour
+  clears this bar, because a star four magnitudes fainter can still produce
+  tens of thousands of ppm. 'could_explain_signal: true' means NOT EXCLUDED,
+  not GUILTY.
+
+Do NOT return 'contaminated' merely because a neighbour could produce the
+depth. That would condemn almost every signal ever observed. Return
+'contaminated' only when something positively points at the neighbour, such as:
+  - the target holds a small fraction of the aperture flux and a much brighter
+    star sits nearby, or
+  - the dilution-corrected depth is physically impossible for a planet
+    (a planet cannot block tens of per cent of a star).
+
+If neighbours merely cannot be excluded, that is the normal state of affairs
+and the signal remains 'interesting'.
 
 Hard constraints:
 - Never state a number you did not receive from a tool. No periods, depths,
@@ -218,11 +238,24 @@ def run_agent(
             run.tools_called.append(block.name)
 
             if block.name == "submit_verdict":
-                run.verdict = block.input.get("verdict")
                 run.confidence = block.input.get("confidence")
                 run.reasoning = block.input.get("reasoning")
                 run.evidence_used = block.input.get("evidence_used", [])
                 run.finished_at = datetime.now(UTC)
+
+                # The schema marks verdict as required, but a required field is
+                # not a guarantee: a run has been observed returning confidence,
+                # reasoning and evidence with the verdict omitted. Validating
+                # here means a half-submitted result is recorded as a failure
+                # rather than as a completed run with a null verdict, which is
+                # the version that costs money without anyone noticing.
+                submitted = block.input.get("verdict")
+                if submitted not in VERDICT_VALUES:
+                    run.stop_reason = "invalid_verdict"
+                    run.error = f"verdict was {submitted!r}, expected one of {VERDICT_VALUES}"
+                    return run
+
+                run.verdict = submitted
                 return run
 
             try:

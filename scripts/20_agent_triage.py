@@ -167,8 +167,16 @@ def main() -> None:
             print()
 
     print(f"\ntotal cost: ${total_cost:.4f}")
+
     submitted = sum(1 for r in results if r["verdict"])
     print(f"verdicts submitted: {submitted}/{len(results)}")
+
+    failed = [r for r in results if not r["verdict"]]
+    if failed:
+        print(f"\n{len(failed)} run(s) produced no verdict:")
+        for r in failed:
+            print(f"  {r['signal_id']:>14}  {r['stop_reason']}"
+                  + (f" - {r['error']}" if r["error"] else ""))
 
     if args.out:
         print(f"wrote {args.out}")

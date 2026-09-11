@@ -852,60 +852,6 @@ without spending credit.
 
 ---
 
-## D-027 — The agent loop: guardrails and output contract
-
-**What an agent is here.** A loop. The model receives the signal and the tool
-list, and replies either with a tool call — which the code executes, returning
-the result — or with a final answer. The API keeps no state, so the whole
-conversation is re-sent every turn.
-
-That last property is why the guardrails are not optional: cost grows with the
-square of the turn count, not linearly, and a model that loops spends real
-money doing it.
-
-**Three guardrails.**
-
-*Iteration ceiling*, default eight. A model that cannot decide keeps calling
-tools. The loop stops and records that it stopped — a result, not a failure.
-
-*Token budget*, default 60,000, checked against the running total after each
-turn. Stopping before the next request rather than after discovering the
-overrun is the difference between a cap and a report.
-
-*Result truncation*, default 6,000 characters. A tool returning an unexpectedly
-large payload would otherwise be paid for in full.
-
-**The output contract.** The verdict is submitted through a `submit_verdict`
-tool rather than written in prose, so the result is structured by construction
-instead of parsed out of free text. A model that answers in prose is recorded
-as `no_verdict_submitted` rather than having a verdict inferred from its words.
-
-`submit_verdict` is the agent's *output channel*, not an evidence source.
-D-023 forbids exposing the rule engine's verdict to the agent; it does not
-forbid the agent from stating its own.
-
-**Failures are outcomes, not exceptions.** An API error, a raising tool, an
-exhausted budget: each ends the run with a recorded `stop_reason` and no
-verdict. Nothing in this loop raises into the caller, because a batch of six
-hundred signals must not stop because one of them failed.
-
-**Schemas are derived, not duplicated.** `anthropic_tool_schemas` translates
-the MCP server's definitions into the API's format. fastmcp calls the schema
-`parameters`, the API calls it `input_schema`; writing them twice would let a
-tool signature diverge from what the model is told about it.
-
-**The system prompt carries the invariants.** Never state a number that did not
-come from a tool. Never read a tool error as a negative result. An unreachable
-archive is not an empty catalogue. These are the same constraints the code
-enforces structurally where it can, repeated where only the model can honour
-them.
-
-**Status.** Active. Implemented in `core/agent.py`, tested against a scripted
-client so the loop, the guardrails and the failure paths are all covered
-without spending credit.
-
----
-
 ## D-028 — Every archive request has a timeout
 
 **Found by an agent run hanging mid-batch.** The process stopped inside an SSL
@@ -949,5 +895,78 @@ loss.
 
 Flushing matters for the same reason it took a stalled run several minutes to
 diagnose: buffered output gave no indication of where the process had reached.
+
+**Status.** Active.
+
+---
+
+## D-030 — A verdict is validated, and the exclusion bound is explained
+
+**Both defects found in the first real pilot run**, at a cost of $0.41.
+
+### The verdict was silently lost
+
+Two of twelve runs recorded `stop_reason: completed` with `verdict: null`,
+while carrying a confidence of 0.97, a full reasoning paragraph and an evidence
+list. The model had called `submit_verdict` and omitted only the verdict field.
+
+*Cause.* The `verdict` property carried a long prose description inside an enum
+field, listing and explaining all six values. The other three fields, with short
+descriptions, arrived every time.
+
+*Fixes, both needed.* The explanation moved to the tool description, leaving
+`verdict` as a bare enum. And the returned value is now validated against the
+enum: anything else records `stop_reason: invalid_verdict` with the offending
+value in `error`.
+
+The second fix matters more than the first. A required field in a schema is not
+a guarantee, so the loop must not assume one. A run that reports itself as
+completed while producing nothing is worse than a run that fails, because it is
+paid for and looks successful — which is exactly how it survived a pilot
+unnoticed.
+
+Whatever did arrive is kept, so the run can still be inspected.
+
+### "Cannot be excluded" was read as "is guilty"
+
+Five of twelve runs returned `contaminated`, spanning four different true
+dispositions including a planet candidate. The reasoning was explicit about
+why: a neighbour could produce a depth larger than the observed one, "meaning
+it cannot be excluded as the true source".
+
+*Cause.* The prompt described what `max_producible_depth_ppm` is without
+stating that it is informative in one direction only.
+
+The bound is the deepest dip a neighbour could cause if totally eclipsed. Below
+the observed depth it *excludes* that neighbour with certainty. Above it,
+nothing is established — and almost every neighbour clears that bar, because a
+star four magnitudes fainter still reaches tens of thousands of ppm. Used as
+evidence of guilt, the check condemns nearly every signal ever observed.
+
+*Fix.* The prompt now states the asymmetry explicitly, says that
+`could_explain_signal: true` means NOT EXCLUDED rather than GUILTY, and names
+the two conditions that do positively indicate contamination: a target holding
+a small fraction of the aperture flux beside a much brighter star, or a
+dilution-corrected depth that is physically impossible for a planet.
+
+*Note.* One run reached the second condition unaided, observing that a
+corrected depth of roughly 485,000 ppm would be absurd for a planetary transit.
+That is a physical deduction none of the deterministic rules can make, and it
+is the kind of reasoning the agent is meant to contribute.
+
+**Status.** Active. Both regressions covered by tests that fail against the
+previous behaviour.
+
+---
+
+## D-031 — Runs without a verdict are listed at the end of a batch
+
+**Decision.** The batch script prints every run that produced no verdict, with
+its stop reason and error.
+
+**Rationale.** The two lost verdicts appeared in the per-signal output as
+`[completed]` in the position where a verdict belongs — visible, but easy to
+read past in a list of twelve. Paid-for failures should be stated as failures,
+in one place, at the end.
 
 **Status.** Active.

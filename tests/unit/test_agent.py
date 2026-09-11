@@ -259,3 +259,69 @@ def test_the_system_prompt_forbids_reading_an_error_as_a_negative():
     system = client.calls[0]["system"].lower()
     assert "unreachable" in system
     assert "insufficient" in system
+
+
+# --- verdict validation -------------------------------------------------------
+
+def test_a_missing_verdict_is_a_failure_not_a_completed_run():
+    """Regression, observed in a real pilot run: the model submitted
+    confidence, reasoning and evidence with the verdict field omitted. The run
+    was recorded as completed with a null verdict, which is a paid-for result
+    that looks successful and is not."""
+    client = ScriptedClient([[block_tool("submit_verdict", {
+        "confidence": 0.97,
+        "reasoning": "TOI-4329 b is catalogued here with a matching period",
+        "evidence_used": ["check_confirmed_planets"],
+    })]])
+    run = run_agent(sig(), client, [], noop_tool)
+
+    assert run.verdict is None
+    assert run.stop_reason == "invalid_verdict"
+    assert "expected one of" in run.error
+    # what did arrive is kept, so the run can still be inspected
+    assert run.confidence == 0.97
+    assert run.reasoning
+
+
+def test_a_verdict_outside_the_enum_is_rejected():
+    client = ScriptedClient([[block_tool("submit_verdict", {
+        "verdict": "probably_a_planet", "confidence": 0.8, "reasoning": "x",
+    })]])
+    run = run_agent(sig(), client, [], noop_tool)
+
+    assert run.stop_reason == "invalid_verdict"
+    assert run.verdict is None
+
+
+@pytest.mark.parametrize("verdict", VERDICT_VALUES)
+def test_every_documented_verdict_is_accepted(verdict):
+    client = ScriptedClient([[verdict_block(verdict)]])
+    run = run_agent(sig(), client, [], noop_tool)
+
+    assert run.verdict == verdict
+    assert run.stop_reason == "completed"
+
+
+def test_the_verdict_field_carries_no_prose_description():
+    """The field is a bare enum. A long description inside an enum field was
+    what the model omitted; the explanation belongs in the tool description."""
+    field = SUBMIT_VERDICT_TOOL["input_schema"]["properties"]["verdict"]
+    assert set(field) == {"type", "enum"}
+    assert all(v in SUBMIT_VERDICT_TOOL["description"] for v in VERDICT_VALUES)
+
+
+# --- the exclusion asymmetry --------------------------------------------------
+
+def test_the_prompt_states_that_exclusion_is_one_directional():
+    """Regression: the agent returned 'contaminated' whenever a neighbour could
+    produce the depth. Almost every neighbour can, so that condemns nearly
+    every signal. The bound excludes; it does not accuse."""
+    client = ScriptedClient([[verdict_block()]])
+    run_agent(sig(), client, [], noop_tool)
+
+    # Normalised: the prompt is wrapped in the source, so a phrase spanning a
+    # line break is not contiguous in the string.
+    system = " ".join(client.calls[0]["system"].split())
+    assert "NOT EXCLUDED, not GUILTY" in system
+    assert "Do NOT return 'contaminated' merely because a neighbour could" in system
+    assert "that neighbour is EXCLUDED" in system

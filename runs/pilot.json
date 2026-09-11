@@ -1,0 +1,264 @@
+[
+  {
+    "signal_id": "TOI-7613.01",
+    "verdict": null,
+    "confidence": 0.7,
+    "reasoning": "check_confirmed_planets found no catalogued planet at this position, so the signal is not a known planet. check_aperture_contamination shows the target contributes only 53.2% of the aperture flux with 15 neighbouring Gaia sources present, several of which (e.g. sources at 39.14, 59.999, 12.328, and 20.829 arcsec) could individually produce a dip deeper than the observed 4216 ppm depth, meaning any of them could be the true source of the signal rather than the target star.",
+    "evidence_used": [
+      "check_confirmed_planets",
+      "check_aperture_contamination"
+    ],
+    "tools_called": [
+      "check_confirmed_planets",
+      "check_aperture_contamination",
+      "check_aperture_contamination",
+      "submit_verdict"
+    ],
+    "iterations": 4,
+    "input_tokens": 12196,
+    "output_tokens": 792,
+    "stop_reason": "completed",
+    "error": null,
+    "started_at": "2026-09-11 22:01:32.738731+00:00",
+    "finished_at": "2026-09-11 22:03:28.687500+00:00",
+    "true_disposition": "APC",
+    "cost_usd": 0.04847
+  },
+  {
+    "signal_id": "TOI-5694.01",
+    "verdict": "contaminated",
+    "confidence": 0.8,
+    "reasoning": "No confirmed planet is catalogued at this position (check_confirmed_planets, 0 matches). check_aperture_contamination shows the target star supplies only 10.5% of the aperture flux, with 7 neighbouring sources present including one brighter star at 28.5 arcsec separation whose maximum producible depth (863,316 ppm) exceeds the observed 51,180 ppm depth, so it 'could_explain_signal'. The dilution-corrected depth (~485,000 ppm) would be absurdly deep for a genuine planetary transit, consistent with the signal actually originating from the nearby brighter contaminant rather than the target.",
+    "evidence_used": [],
+    "tools_called": [
+      "check_confirmed_planets",
+      "check_aperture_contamination",
+      "submit_verdict"
+    ],
+    "iterations": 3,
+    "input_tokens": 8876,
+    "output_tokens": 806,
+    "stop_reason": "completed",
+    "error": null,
+    "started_at": "2026-09-11 22:03:28.689027+00:00",
+    "finished_at": "2026-09-11 22:04:34.180524+00:00",
+    "true_disposition": "APC",
+    "cost_usd": 0.03872
+  },
+  {
+    "signal_id": "TOI-4329.01",
+    "verdict": null,
+    "confidence": 0.97,
+    "reasoning": "check_confirmed_planets found TOI-4329 b cataloged at this position (separation 0.001 arcsec) with a period matching the candidate (2.9223 vs 2.9224661 days, relation 'match'), discovered via TESS in 2022. This is simply a rediscovery of the known planet.",
+    "evidence_used": [
+      "check_confirmed_planets"
+    ],
+    "tools_called": [
+      "check_confirmed_planets",
+      "submit_verdict"
+    ],
+    "iterations": 2,
+    "input_tokens": 5286,
+    "output_tokens": 354,
+    "stop_reason": "completed",
+    "error": null,
+    "started_at": "2026-09-11 22:04:34.181523+00:00",
+    "finished_at": "2026-09-11 22:04:52.661188+00:00",
+    "true_disposition": "CP",
+    "cost_usd": 0.02117
+  },
+  {
+    "signal_id": "TOI-2524.01",
+    "verdict": "known",
+    "confidence": 0.98,
+    "reasoning": "check_confirmed_planets found a catalogued planet, TOI-2524 b, at a separation of 0.002 arcsec from the given position with a period matching the candidate's 7.1858029 days (period_relation: 'match'). This is a rediscovery of a known, published exoplanet, not a new signal.",
+    "evidence_used": [],
+    "tools_called": [
+      "check_confirmed_planets",
+      "submit_verdict"
+    ],
+    "iterations": 2,
+    "input_tokens": 5289,
+    "output_tokens": 337,
+    "stop_reason": "completed",
+    "error": null,
+    "started_at": "2026-09-11 22:04:52.662195+00:00",
+    "finished_at": "2026-09-11 22:05:04.023673+00:00",
+    "true_disposition": "CP",
+    "cost_usd": 0.02092
+  },
+  {
+    "signal_id": "TOI-3983.01",
+    "verdict": "insufficient",
+    "confidence": 0.3,
+    "reasoning": "check_confirmed_planets found no cataloged planet within 5 arcsec of the target position (match_count=0), so this signal is not a known planet. However, check_aperture_contamination failed twice with a Gaia timeout error, so contamination from a neighbouring source could not be assessed; per protocol a tool error is not evidence of a clean aperture, so the verdict must be insufficient rather than interesting.",
+    "evidence_used": [
+      "check_confirmed_planets",
+      "check_aperture_contamination"
+    ],
+    "tools_called": [
+      "check_confirmed_planets",
+      "check_aperture_contamination",
+      "check_aperture_contamination",
+      "submit_verdict"
+    ],
+    "iterations": 4,
+    "input_tokens": 11293,
+    "output_tokens": 813,
+    "stop_reason": "completed",
+    "error": null,
+    "started_at": "2026-09-11 22:05:04.025146+00:00",
+    "finished_at": "2026-09-11 22:07:28.579553+00:00",
+    "true_disposition": "FA",
+    "cost_usd": 0.04607
+  },
+  {
+    "signal_id": "TOI-1275.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "check_confirmed_planets found no catalogued planet within 5 arcsec of this position, so the signal is not already known. check_aperture_contamination found a Gaia DR3 neighbour at 4.481 arcsec separation that could produce up to 70103 ppm if eclipsed \u2014 well above the observed 1938 ppm depth \u2014 meaning it cannot be excluded as the true source, and the target contributes only 90.1% of the aperture flux (dilution finding).",
+    "evidence_used": [],
+    "tools_called": [
+      "check_confirmed_planets",
+      "check_aperture_contamination",
+      "submit_verdict"
+    ],
+    "iterations": 3,
+    "input_tokens": 9034,
+    "output_tokens": 703,
+    "stop_reason": "completed",
+    "error": null,
+    "started_at": "2026-09-11 22:07:28.580545+00:00",
+    "finished_at": "2026-09-11 22:08:16.811843+00:00",
+    "true_disposition": "FA",
+    "cost_usd": 0.03765
+  },
+  {
+    "signal_id": "TOI-4367.01",
+    "verdict": "insufficient",
+    "confidence": 0.2,
+    "reasoning": "check_confirmed_planets found no catalogued planet within 5 arcsec of this position for any period relation, so it is not a known/rediscovered planet. However, check_aperture_contamination failed twice with a Gaia read timeout, so contamination from a neighbouring star could not be assessed; per protocol this tool failure is not evidence of a clean aperture, leaving the case undetermined.",
+    "evidence_used": [],
+    "tools_called": [
+      "check_confirmed_planets",
+      "check_aperture_contamination",
+      "check_aperture_contamination",
+      "submit_verdict"
+    ],
+    "iterations": 4,
+    "input_tokens": 11266,
+    "output_tokens": 799,
+    "stop_reason": "completed",
+    "error": null,
+    "started_at": "2026-09-11 22:08:16.812844+00:00",
+    "finished_at": "2026-09-11 22:10:35.697160+00:00",
+    "true_disposition": "FP",
+    "cost_usd": 0.04578
+  },
+  {
+    "signal_id": "TOI-6952.01",
+    "verdict": "contaminated",
+    "confidence": 0.65,
+    "reasoning": "check_confirmed_planets found no catalogued planet at this position, so this is not a known rediscovery. check_aperture_contamination (Gaia DR3) found 15 neighbouring sources within 60 arcsec, including one just 1.5 arcsec away, all of which could individually produce a depth deeper than the observed 6171 ppm, meaning any of them could be the true origin of the dip rather than the target star. Given the substantial dilution (63.8% target flux) and multiple viable contaminant sources, the signal plausibly originates from a neighbouring star rather than the target.",
+    "evidence_used": [],
+    "tools_called": [
+      "check_confirmed_planets",
+      "check_aperture_contamination",
+      "submit_verdict"
+    ],
+    "iterations": 3,
+    "input_tokens": 9065,
+    "output_tokens": 795,
+    "stop_reason": "completed",
+    "error": null,
+    "started_at": "2026-09-11 22:10:35.699224+00:00",
+    "finished_at": "2026-09-11 22:11:20.371943+00:00",
+    "true_disposition": "FP",
+    "cost_usd": 0.03912
+  },
+  {
+    "signal_id": "TOI-5528.01",
+    "verdict": "known",
+    "confidence": 0.97,
+    "reasoning": "check_confirmed_planets found a catalogued planet K2-117 b at separation 0.002 arcsec from the target position, with period_relation 'match' to the candidate's 1.2916034 day period. This is a rediscovery of a known transiting planet, not a new signal.",
+    "evidence_used": [],
+    "tools_called": [
+      "check_confirmed_planets",
+      "submit_verdict"
+    ],
+    "iterations": 2,
+    "input_tokens": 5353,
+    "output_tokens": 359,
+    "stop_reason": "completed",
+    "error": null,
+    "started_at": "2026-09-11 22:11:20.372936+00:00",
+    "finished_at": "2026-09-11 22:11:27.184429+00:00",
+    "true_disposition": "KP",
+    "cost_usd": 0.02144
+  },
+  {
+    "signal_id": "TOI-2129.01",
+    "verdict": "known",
+    "confidence": 0.98,
+    "reasoning": "check_confirmed_planets found HAT-P-14 b at this position (separation 0.001 arcsec) with a period of 4.62767 days, matching the candidate period of 4.627664 days ('match' relation). This is a rediscovery of a known hot Jupiter, not a new signal.",
+    "evidence_used": [],
+    "tools_called": [
+      "check_confirmed_planets",
+      "submit_verdict"
+    ],
+    "iterations": 2,
+    "input_tokens": 5261,
+    "output_tokens": 354,
+    "stop_reason": "completed",
+    "error": null,
+    "started_at": "2026-09-11 22:11:27.187400+00:00",
+    "finished_at": "2026-09-11 22:11:34.970400+00:00",
+    "true_disposition": "KP",
+    "cost_usd": 0.02109
+  },
+  {
+    "signal_id": "TOI-2561.01",
+    "verdict": "contaminated",
+    "confidence": 0.65,
+    "reasoning": "check_confirmed_planets found no catalogued planet within 5 arcsec of this position, so this is not a known/published planet. check_aperture_contamination (Gaia DR3) shows the target supplies only 53.7% of the aperture flux and lists 15 neighbouring sources, with at least 5 of them capable of producing the full observed 8510 ppm depth on their own (up to 313,388 ppm max), so a neighbouring eclipsing source cannot be excluded as the true origin of the signal.",
+    "evidence_used": [
+      "check_confirmed_planets",
+      "check_aperture_contamination"
+    ],
+    "tools_called": [
+      "check_confirmed_planets",
+      "check_aperture_contamination",
+      "submit_verdict"
+    ],
+    "iterations": 3,
+    "input_tokens": 8995,
+    "output_tokens": 767,
+    "stop_reason": "completed",
+    "error": null,
+    "started_at": "2026-09-11 22:11:34.974408+00:00",
+    "finished_at": "2026-09-11 22:12:35.162623+00:00",
+    "true_disposition": "PC",
+    "cost_usd": 0.03849
+  },
+  {
+    "signal_id": "TOI-5754.01",
+    "verdict": "interesting",
+    "confidence": 0.75,
+    "reasoning": "check_confirmed_planets found no catalogued planet within 5 arcsec of this position, so the signal is not a known planet. check_aperture_contamination shows the target contributes 98.6% of the aperture flux with zero brighter neighbours, and all six nearby Gaia DR3 sources have maximum producible depths (up to 4031 ppm) well below the observed 9470 ppm, excluding them as the source. With contamination and prior catalogue entries ruled out, this signal survives triage and warrants follow-up.",
+    "evidence_used": [],
+    "tools_called": [
+      "check_confirmed_planets",
+      "check_aperture_contamination",
+      "submit_verdict"
+    ],
+    "iterations": 3,
+    "input_tokens": 8776,
+    "output_tokens": 655,
+    "stop_reason": "completed",
+    "error": null,
+    "started_at": "2026-09-11 22:12:35.163613+00:00",
+    "finished_at": "2026-09-11 22:13:10.541211+00:00",
+    "true_disposition": "PC",
+    "cost_usd": 0.03615
+  }
+]

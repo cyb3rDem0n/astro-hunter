@@ -666,3 +666,83 @@ convergence of meridians documented in D-018 caught its own author. Offsets in
 test fixtures are now made in declination, which is unaffected.
 
 **Status.** Active. Implemented in `neighbours.py` and `core/evidence.py`.
+
+---
+
+## D-025 — Queue modes are separated in code, and the benchmark is a file
+
+**Three decisions about how candidates enter the system.**
+
+### The triage query never names the disposition column
+
+`fetch_triage_queue` builds an ADQL `SELECT` listing eight columns explicitly.
+`tfopwg_disp` is not among them, and an assertion rejects any query that
+mentions it.
+
+*Rationale.* D-016 requires the label to be withheld from the agent. Fetching
+the row and then declining to look at it relies on every later caller
+remembering; not fetching it means there is nothing to leak, whatever happens
+downstream. The `SELECT *` that would have been shorter is the version that
+fails this.
+
+### Loading returns signals and labels as separate objects
+
+`load_benchmark` returns a list of `(Signal, label)` pairs rather than a
+labelled signal object. Handing a disposition to a check therefore requires
+writing it out, which is visible in review, instead of happening because an
+attribute rode along.
+
+### The benchmark sample is committed, not queried
+
+`scripts/01_build_benchmark.py` writes `tests/fixtures/toi_benchmark.csv` once;
+evaluations read the file.
+
+*Rationale.* Dispositions are revised as follow-up accumulates (D-015).
+Evaluating against the live catalog would compare today's verdicts to labels
+that have moved since the last run, so two results would not be comparable and
+neither would be reproducible. A refresh is a deliberate commit with a new date,
+and results are reported against the sample they used.
+
+*Stratified, not uniform.* Equal numbers per disposition, because the classes
+are heavily imbalanced: a uniform draw would be 59 % planet candidates and would
+contain almost no false alarms, which are 1.2 % of the catalog. Per-class
+precision and recall need per-class examples. The majority-class baseline stays
+computed from the catalog's real proportions, not the sample's — a stratified
+sample would flatter it.
+
+*Seeded.* The sample is reproducible from the seed, so a lost file can be
+rebuilt rather than becoming a new sample with the same name.
+
+### Epoch is converted at the boundary
+
+The catalog records mid-transit in BJD; TESS light-curve timestamps are BTJD,
+which is BJD minus 2457000. The conversion happens in `signal_from_row`, once,
+rather than at each point of use.
+
+Mixing the two displaces an ephemeris by four and a half thousand days. The
+instrumental check would then find no data at any predicted transit and report
+that every event falls in a gap — a plausible-looking conclusion from a unit
+error, which is the kind of failure that survives review.
+
+**Status.** Active. Implemented in `sources/toi.py`.
+
+---
+
+## D-026 — Masked catalog values are checked explicitly, not through nan
+
+**Found by running the pipeline against the live catalog, not by review.**
+Building the benchmark sample printed `UserWarning: Warning: converting a
+masked element to nan` for every missing value in the result.
+
+**Cause.** astropy table cells for missing data are numpy masked elements
+(`numpy.ma.core.MaskedConstant`), not `None`. `float()` on one succeeds and
+returns `nan`, with a warning on every call. `_number` already filtered `nan`
+on the way out, so the returned values were correct; the defect was noise, and
+a masked element reaching code that does not filter `nan` would have been a
+silent defect rather than a warning at all.
+
+**Fix.** `_number` checks for a masked value explicitly before attempting the
+conversion, rather than relying on the nan produced downstream.
+
+**Status.** Active. Implemented in `sources/toi.py`, regression-tested with
+`warnings.simplefilter("error")` so the fix cannot silently regress.

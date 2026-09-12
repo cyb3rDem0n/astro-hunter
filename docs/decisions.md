@@ -264,9 +264,11 @@ unlabelled queues, which is only meaningful once accuracy is established.
 **Verify before building.** Which dispositions the TOI catalog exposes, and how
 they are encoded, must be checked against the live catalog rather than assumed.
 
-**Status.** Active. Implemented in `core/metrics.py` (D-035); run once
-against real data on a 12-signal pilot (D-035, 2026-09-12) — the full pinned
-benchmark has not been run.
+**Status.** Active. Implemented in `core/metrics.py` (D-035); run once against
+real data on a 12-signal pilot (D-035, 2026-09-12), but not a valid
+agent-vs-rules comparison — the two sides saw different Gaia availability. A
+valid comparison, and a run of the full pinned benchmark, are both still
+pending.
 
 ---
 
@@ -1198,26 +1200,58 @@ against the two:
 | F1 | 56.2% | 70.8% |
 
 On this pilot, the free rule engine outscored the agent on every macro
-figure — exactly the question this decision exists to ask ("a rule engine
-that scores well is worth keeping; an agent that cannot beat it is not worth
-its cost"). Both missed `INSTRUMENTAL` entirely, as declared (no instrumental
-check for either path). The agent never produced `FP`; the rules did,
-correctly recalling both `FP` signals as `contaminated`, but at only 33.3%
-precision - the rule that reaches `contaminated` also fired on at least one
-non-`FP` signal.
+figure — the question this decision exists to ask ("a rule engine that
+scores well is worth keeping; an agent that cannot beat it is not worth its
+cost"). Both missed `INSTRUMENTAL` entirely, as declared (no instrumental
+check for either path). Neither number above should be read as an answer to
+that question yet, for two independent reasons.
 
-**Not a stable estimate.** 12 signals, 2 per class: one misclassification
-moves a class's recall by 50 points, which is most of the spread above. This
-is the first proof the whole pipeline - rule engine, agent, and the
-comparison between them - runs correctly end to end on real archive data, not
-a result to generalise from. The pinned benchmark (8,148 rows, D-015) is
-what a real comparison needs, and running the agent over it costs real money
-per D-029/D-027's guardrails.
+**Not directly comparable: the two sides did not see the same evidence.**
+`runs/pilot2.json` was collected 2026-09-11, before D-036 existed - Gaia had
+one endpoint (ESA) and it was unreachable for the whole session. Five of the
+agent's twelve verdicts are `insufficient` and say so explicitly
+(`runs/pilot2.json`, e.g. TOI-1275.01: "check_aperture_contamination failed
+twice with a Gaia read timeout"). `runs/rule_pilot2.json` was produced
+2026-09-12, after D-036, and its aperture checks completed - answered by the
+ARI mirror, per the live smoke test recorded in D-036 - for all twelve
+signals. The agent was scored against a Gaia outage the rule engine never
+faced. The macro numbers above therefore measure archive availability at
+least as much as they measure judgement, and should not be cited as "the
+agent vs. the rules" until both sides run against a reachable Gaia.
+
+**The rule engine's `FP` score is saturation, not discrimination.** Rule 5 in
+`derive_verdict` returned `contaminated` for six of the twelve signals:
+correctly for both true `FP` cases, but also for one `APC`, two `FA`, and one
+`PC` - four wrong calls out of six. The `FP`-class recall (100%) and the
+headline "rules beat the agent" both come from a rule that fires on half the
+benchmark regardless of the true class, not from a rule that tells `FP`
+apart from anything else. `FP` precision (33.3%) shows this in the per-class
+table; the macro F1 (70.8%) averages it away with the classes the rule
+engine gets right for the right reason, and reading only that number would
+hide exactly the failure mode this evaluation exists to catch.
+
+**Not a stable estimate, on top of both of the above.** 12 signals, 2 per
+class: one misclassification moves a class's recall by 50 points, which is
+most of the spread in the table. This run is the first proof the whole
+pipeline - rule engine, agent, and the comparison between them - runs
+correctly end to end on real archive data, not a result to generalise from,
+and not yet a valid comparison even setting stability aside.
+
+**Rerun required.** The comparison must be run again with the agent executed
+against a reachable Gaia (post-D-036) before its numbers mean anything
+against the rule engine's. This needs new `scripts/20_agent_triage.py`
+credit, which was not available in this session; the pinned benchmark
+(8,148 rows, D-015) is what a real comparison needs regardless, and running
+the agent over it costs real money per D-029/D-027's guardrails.
 
 **Status.** Active. Implemented in `core/metrics.py`,
-`scripts/11_rule_triage.py`, `scripts/30_compare_verdicts.py`. First real
-comparison run 2026-09-12 on the 12-signal pilot (`runs/pilot2.json` /
-`runs/rule_pilot2.json`); the full pinned benchmark has not been run.
+`scripts/11_rule_triage.py`, `scripts/30_compare_verdicts.py`. First run
+2026-09-12 on the 12-signal pilot (`runs/pilot2.json` / `runs/rule_pilot2.json`)
+produced a comparison that is **not valid as agent-vs-rules**: the agent ran
+against an unreachable Gaia (pre-D-036) and the rules against a reachable one
+(post-D-036), and the rule engine's apparent win on `FP` is a saturated rule,
+not discrimination. Superseding run pending: same pilot (or the full pinned
+benchmark), agent re-run post-D-036.
 
 ---
 

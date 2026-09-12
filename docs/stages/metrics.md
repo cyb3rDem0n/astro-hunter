@@ -155,13 +155,21 @@ inventare un denominatore. Non va letto come "prestazione nulla".
   solo se dichiarata a parte, ed è per questo che `format_report` la scrive
   esplicitamente in testa, invece di lasciare che il lettore la deduca da
   una cella vuota.
-- **`runs/rule_pilot2.json` non esiste ancora.** Il controparte a regole del
-  run reale `runs/pilot2.json` richiede `scripts/11_rule_triage.py`, che
-  interroga NASA Exoplanet Archive e Gaia DR3 in rete. Gaia è risultato
-  irraggiungibile per l'intera durata di questa sessione (D-032,
-  `outputs/gaia_probe.log`). Il modulo e gli script sono coperti da test
-  unitari su record sintetici; il primo confronto reale resta da eseguire
-  quando gli archivi torneranno raggiungibili.
+- **Il primo confronto reale è stato eseguito, ma non è valido come
+  agente-contro-regole (D-035).** `runs/rule_pilot2.json` esiste, prodotto da
+  `scripts/11_rule_triage.py` dopo che D-036 ha reso Gaia raggiungibile
+  tramite il mirror ARI. Ma `runs/pilot2.json` (il lato agente) era stato
+  raccolto il giorno prima, con Gaia irraggiungibile: cinque dei dodici
+  verdetti dell'agente sono `insufficient` per timeout di Gaia, esplicitamente
+  dichiarato nel loro `reasoning`. Le due strade non hanno visto le stesse
+  prove, quindi il numero prodotto misura anche la disponibilità
+  dell'archivio, non solo il giudizio. Un secondo problema, indipendente:
+  la classe `FP` delle regole ottiene recall 100% perché la regola 5 di
+  `derive_verdict` ha risposto `contaminated` in sei casi su dodici — due
+  corretti, quattro no (un APC, due FA, un PC) — per saturazione, non per
+  discriminazione; la precision per classe (33.3%) lo mostra, il macro F1 lo
+  nasconde. Un confronto valido richiede l'agente rieseguito con Gaia
+  raggiungibile.
 - **Supporto ridotto nel pilota.** `runs/pilot2.json` contiene 12 segnali, 2
   per disposizione. Con un supporto così piccolo, un singolo segnale
   classificato in modo diverso sposta recall o precision di una classe di

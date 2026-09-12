@@ -130,3 +130,34 @@ def test_evidence_carries_provenance():
     ev = crossmatch_confirmed(signal(), service=FakeService([close]))[0]
     assert ev.source and ev.retrieved_at <= datetime.now(UTC)
     assert ev.separation_arcsec is not None
+
+
+def test_a_position_beside_ra_zero_finds_a_planet_across_the_seam(spatial_service):
+    """Regression for D-034: the query the box produced could not match this.
+
+    RA wraps at 360 and subtraction does not, so a box centred at RA 0.0005 read
+    `ra BETWEEN -0.00089 AND 0.00189` and excluded a planet at RA 359.9995 —
+    3.6 arcsec away, well inside the 5 arcsec radius. Nothing raised: the query
+    returned no rows and the cross-match reported "no confirmed planet within 5
+    arcsec", which is indistinguishable from the true answer.
+    """
+    found = find_confirmed_planets(
+        ra_deg=0.0005,
+        dec_deg=0.0,
+        radius_arcsec=5.0,
+        service=spatial_service([row(359.9995, 0.0, name="Seam b")]),
+    )
+    assert [p["planet"] for p in found] == ["Seam b"]
+    assert found[0]["separation_arcsec"] == pytest.approx(3.6, abs=0.1)
+
+
+def test_the_seam_does_not_widen_the_match_radius(spatial_service):
+    """The cone must fix the wrap without quietly admitting anything else: a
+    planet across the seam but outside the radius is still not a match."""
+    found = find_confirmed_planets(
+        ra_deg=0.0005,
+        dec_deg=0.0,
+        radius_arcsec=5.0,
+        service=spatial_service([row(359.9960, 0.0, name="Too far b")]),
+    )
+    assert found == []

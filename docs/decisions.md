@@ -430,23 +430,34 @@ if this class scores anomalously in either direction.
 planet with a consolidated parameter set; `ps` carries one row per published
 reference and would return the same planet several times.
 
-**Bounding box in ADQL, exact separation in astropy.** Support for ADQL
-geometry (`CONTAINS`, `POINT`, `CIRCLE`) varies between services and versions;
-comparison operators do not. The box over-selects, then the true angular
-separation is computed locally.
+**Prefilter in ADQL, exact separation in astropy.** The query narrows the
+region; the true angular separation is then computed locally and decides what
+is kept. That split is the durable half of this decision and is unchanged.
 
-This is not only portability. Right ascension converges towards the poles, so a
-raw difference in RA understates separation by 1/cos(dec) — a factor of six at
-the reference target's declination of −80°. Delegating this to astropy removes
-a class of error that would appear only at high declination, where it is
-hardest to notice.
+Right ascension converges towards the poles, so a raw difference in RA
+understates separation by 1/cos(dec) — a factor of six at the reference
+target's declination of −80°. Delegating that to astropy removes a class of
+error that would appear only at high declination, where it is hardest to
+notice.
+
+*Scope narrowed by D-034 (2026-09-12).* This decision originally also specified
+the prefilter's **form** — a bounding box on plain `ra`/`dec` comparisons rather
+than `CONTAINS`/`POINT`/`CIRCLE` — on the grounds that support for ADQL geometry
+varies between services and versions. That caution belongs to a query written
+against an unknown service. It does not apply here: both call sites address one
+named archive each, Gaia and the NASA Exoplanet Archive, and both serve ADQL
+geometry. Buying portability that neither path needs cost a silent correctness
+defect at RA 0, which is the wrong trade. The form is now specified by D-034;
+what remains here is the prefilter/exact-separation split, which both forms
+honour.
 
 **An unreachable service raises; it never returns empty.** A network failure
 and "nothing catalogued here" support opposite conclusions. Conflating them
 would let an outage read as a clean result, which is the project's
 "absence of data is not absence of signal" invariant applied to catalogs.
 
-**Status.** Active. Implemented in `catalogs.py` and `neighbours.py`.
+**Status.** Active, with the prefilter's form now set by D-034. Implemented in
+`catalogs.py` and `neighbours.py`.
 
 ---
 
@@ -1074,12 +1085,13 @@ request budget per run.
 
 ---
 
-## D-034 — The Gaia prefilter is a cone, not a coordinate box
+## D-034 — The catalog prefilter is a cone, not a coordinate box
 
-**Defect.** `neighbours._bounding_box` built the RA interval by subtracting a
-padding from the centre. RA wraps at 360 and subtraction does not, so for a
-position near the seam the query read `ra BETWEEN -0.0034 AND 0.0034` and
-matched nothing.
+**Defect.** `_bounding_box` built the RA interval by subtracting a padding from
+the centre, in `neighbours.py` and in `catalogs.py` alike. RA wraps at 360 and
+subtraction does not, so for a position near the seam the query read
+`ra BETWEEN -0.0034 AND 0.0034` and could not match a source just below 360,
+however close it actually was.
 
 **Why it mattered more than an ordinary bug.** It raised no error. The empty
 result travelled the normal path and came out as "no Gaia source within 10.5
@@ -1089,24 +1101,35 @@ invariant that absence of data must not read as absence of signal was being
 violated silently, for every signal in a narrow strip of sky.
 
 **Fix.** The prefilter is now `CONTAINS(POINT('ICRS', ra, dec), CIRCLE(...))`.
-A cone has no seam to get wrong, and it is the form Gaia's spatial index serves.
+A cone has no seam to get wrong, and it is the form the archives' spatial
+indexes serve.
 
 **Numerically neutral by construction.** The selection was always a prefilter:
-`find_neighbours` computes the exact angular separation with astropy afterwards
-and drops anything outside the aperture. Widening or narrowing the prefilter
-cannot change which neighbours are reported, only how many rows are fetched to
-find them. A test asserts that directly.
+both callers compute the exact angular separation with astropy afterwards and
+drop anything outside the radius. Widening or narrowing the prefilter cannot
+change which sources are reported, only how many rows are fetched to find them.
+A test asserts that directly, and another checks the cone does not quietly
+admit anything beyond the radius.
 
-**Note the disagreement.** `catalogs._bounding_box` documents the opposite
-choice — comparison operators rather than ADQL geometry, because geometry
-support varies between TAP services. That reasoning holds for a portable query;
-it does not bind the Gaia path, which talks to one service that is the reference
-implementation for ADQL geometry. `catalogs.py` still carries the same RA-wrap
-defect and is **not** fixed here.
+**Both modules, one helper.** The identical defect existed independently in
+`catalogs._bounding_box`, where fixing one would have left the other wrong. The
+cone is therefore a single function in `core/adql.py` and both call sites use
+it. D-018 previously specified the box form on portability grounds; its scope is
+narrowed accordingly, since each call site addresses one named archive and both
+serve ADQL geometry. The prefilter/exact-separation split that D-018 also
+specifies is untouched — that is what makes this change numerically neutral.
+
+**The tests had no teeth, which is why this survived.** The fake service in the
+unit tests returned its rows whatever the query said, so every test passed while
+the real archive returned nothing. `tests/unit/conftest.py` now provides a fake
+that applies the query's spatial predicate, and understands both the cone and
+the box so the old form cannot quietly start passing. The regression tests fail
+against the box and pass against the cone; that was checked by reinstating the
+box, not assumed.
 
 **Not verified against the live archive.** ESA has been unreachable throughout
-(D-032), so the ADQL has not been executed once. The change is covered by unit
-tests on the emitted query and on the local filtering; the first live run should
-be treated as the verification.
+(D-032), so the Gaia ADQL has not been executed once. The NASA Exoplanet Archive
+path is equally unexercised here. The first live run of each should be treated
+as the verification.
 
-**Status.** Active for `neighbours.py`. `catalogs.py` unresolved.
+**Status.** Active in `neighbours.py` and `catalogs.py`, via `core/adql.py`.

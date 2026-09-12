@@ -35,6 +35,7 @@ import astropy.units as u
 import pyvo
 from astropy.coordinates import SkyCoord
 
+from astro_hunter.core.adql import cone_predicate
 from astro_hunter.core.http import CircuitBreaker, tap_service
 from astro_hunter.core.models import Evidence, EvidenceKind
 
@@ -110,26 +111,6 @@ def max_depth_from_neighbour(ratio: float, all_ratios: list[float]) -> float:
     return ratio / (1.0 + sum(all_ratios))
 
 
-def _cone_predicate(ra_deg: float, dec_deg: float, radius_arcsec: float) -> str:
-    """ADQL cone prefilter; the exact separation is still computed afterwards.
-
-    This replaces a bounding box on plain ``ra``/``dec`` ranges (D-034). The box
-    had a defect that produced no error: an RA interval built by subtraction does
-    not wrap, so near RA 0 or 360 it read like ``BETWEEN -0.01 AND 0.01`` and
-    matched nothing. Every signal in that strip came back as "no Gaia source at
-    this position" — a wrong answer that looks exactly like a real one.
-
-    A cone has no seam to get wrong, and it is the form Gaia's spatial index
-    serves. It is not a change of method: the selection is still a prefilter,
-    and `find_neighbours` still filters on exact angular separation after it.
-    """
-    return (
-        f"1 = CONTAINS("
-        f"POINT('ICRS', ra, dec), "
-        f"CIRCLE('ICRS', {ra_deg!r}, {dec_deg!r}, {radius_arcsec / 3600.0!r}))"
-    )
-
-
 def find_neighbours(
     ra_deg: float,
     dec_deg: float,
@@ -151,7 +132,7 @@ def find_neighbours(
     adql = f"""
         SELECT source_id, ra, dec, phot_g_mean_mag, parallax, pmra, pmdec
         FROM {TABLE}
-        WHERE {_cone_predicate(ra_deg, dec_deg, radius_arcsec)}
+        WHERE {cone_predicate(ra_deg, dec_deg, radius_arcsec)}
           AND phot_g_mean_mag IS NOT NULL
     """
     try:

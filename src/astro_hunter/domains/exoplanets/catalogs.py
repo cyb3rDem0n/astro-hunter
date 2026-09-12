@@ -22,6 +22,7 @@ import astropy.units as u
 import pyvo
 from astropy.coordinates import SkyCoord
 
+from astro_hunter.core.adql import cone_predicate
 from astro_hunter.core.http import CircuitBreaker, tap_service
 from astro_hunter.core.models import Evidence, EvidenceKind
 
@@ -82,28 +83,6 @@ def period_relation(
     return "unrelated"
 
 
-def _bounding_box(ra_deg: float, dec_deg: float, radius_arcsec: float):
-    """A generous RA/Dec box for the ADQL prefilter.
-
-    Deliberately not CONTAINS/POINT/CIRCLE: support for ADQL geometry varies
-    between services and versions, while comparison operators do not. The box
-    over-selects; the exact angular separation is then computed with astropy,
-    which also handles the RA convergence near the poles correctly.
-    """
-    radius_deg = radius_arcsec / 3600.0
-    dec_min = max(-90.0, dec_deg - radius_deg)
-    dec_max = min(90.0, dec_deg + radius_deg)
-
-    # Widen in RA by 1/cos(dec); near the poles fall back to the full range.
-    import math
-
-    cos_dec = math.cos(math.radians(min(abs(dec_min), abs(dec_max))))
-    if cos_dec < 1e-6:
-        return 0.0, 360.0, dec_min, dec_max
-    ra_pad = radius_deg / cos_dec
-    return ra_deg - ra_pad, ra_deg + ra_pad, dec_min, dec_max
-
-
 def find_confirmed_planets(
     ra_deg: float,
     dec_deg: float,
@@ -116,12 +95,10 @@ def find_confirmed_planets(
     angular separation in arcseconds. Empty list means nothing catalogued
     there; an unreachable service raises instead.
     """
-    ra_min, ra_max, dec_min, dec_max = _bounding_box(ra_deg, dec_deg, radius_arcsec)
     adql = f"""
         SELECT pl_name, hostname, ra, dec, pl_orbper, pl_rade, disc_year, disc_facility
         FROM {TABLE}
-        WHERE dec BETWEEN {dec_min} AND {dec_max}
-          AND ra BETWEEN {ra_min} AND {ra_max}
+        WHERE {cone_predicate(ra_deg, dec_deg, radius_arcsec)}
     """
     try:
         rows = (service or _service()).search(adql).to_table()

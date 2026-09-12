@@ -21,11 +21,11 @@ import astropy.units as u
 import numpy as np
 from astropy.coordinates import SkyCoord
 
+from astro_hunter.core.adql import cone_predicate
 from astro_hunter.core.http import tap_service
 from astro_hunter.domains.exoplanets.neighbours import (
     DEFAULT_APERTURE_ARCSEC,
     TAP_URL,
-    _cone_predicate,
     find_neighbours,
 )
 
@@ -58,7 +58,7 @@ def time_one(pos: dict, timeout: float, radius_arcsec: float) -> dict:
     """Wall time of one neighbour query, split into archive and local work."""
     service = tap_service(TAP_URL, timeout=timeout)
 
-    cone = _cone_predicate(pos["ra_deg"], pos["dec_deg"], radius_arcsec)
+    cone = cone_predicate(pos["ra_deg"], pos["dec_deg"], radius_arcsec)
     adql = f"""
         SELECT COUNT(*) AS n
         FROM gaiadr3.gaia_source

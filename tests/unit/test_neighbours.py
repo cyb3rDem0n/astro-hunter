@@ -5,7 +5,6 @@ import pytest
 from astro_hunter.core.models import EvidenceKind, Signal
 from astro_hunter.domains.exoplanets.neighbours import (
     CatalogUnavailable,
-    _cone_predicate,
     corrected_depth,
     crossmatch_neighbours,
     dilution,
@@ -221,15 +220,6 @@ class RecordingService(FakeService):
         return super().search(adql)
 
 
-def test_the_prefilter_is_a_cone_not_a_coordinate_box():
-    """A box on plain ra/dec has a seam at RA 0; a cone has none, and it is the
-    form Gaia's spatial index serves."""
-    predicate = _cone_predicate(84.29928, -80.464604, 60.0)
-    assert "CONTAINS" in predicate
-    assert "CIRCLE('ICRS'" in predicate
-    assert "BETWEEN" not in predicate
-
-
 @pytest.mark.parametrize("ra_deg", [0.0, 0.004, 359.996, 360.0, 180.0])
 def test_positions_on_the_ra_seam_still_select_their_own_centre(ra_deg):
     """The defect this replaces: an RA interval built by subtraction does not
@@ -240,13 +230,6 @@ def test_positions_on_the_ra_seam_still_select_their_own_centre(ra_deg):
     find_neighbours(ra_deg=ra_deg, dec_deg=-80.46, service=service)
     assert repr(ra_deg) in service.adql
     assert "BETWEEN" not in service.adql
-
-
-def test_the_cone_radius_is_the_aperture_converted_to_degrees():
-    """ADQL geometry is in degrees; the aperture is quoted in arcseconds.
-    Passing 60 where 60/3600 belongs would query a cone 3600 times too wide."""
-    predicate = _cone_predicate(10.0, 20.0, 60.0)
-    assert repr(60.0 / 3600.0) in predicate
 
 
 def test_exact_separation_is_still_filtered_after_the_cone():
@@ -260,3 +243,23 @@ def test_exact_separation_is_still_filtered_after_the_cone():
     target, neighbours = find_neighbours(**POS, service=FakeService(rows))
     assert target["source_id"] == "target"
     assert [n["source_id"] for n in neighbours] == []
+
+
+def test_an_aperture_beside_ra_zero_sees_across_the_seam(spatial_service):
+    """The same defect as D-034 in catalogs, and the one that mattered more here.
+
+    The box centred at RA 0.001 read `ra BETWEEN -0.0157 AND 0.0177` and
+    excluded everything just below 360. Both the target 5.4 arcsec away and a
+    contaminating source 39.6 arcsec away fell outside it, so the aperture came
+    back empty and the signal was reported as unattributable to any star —
+    silently, for every position in that strip of sky.
+    """
+    rows = [
+        src(359.9995, 0.0, 12.0, "target"),
+        src(359.99, 0.0, 13.0, "contaminant"),
+    ]
+    target, neighbours = find_neighbours(
+        ra_deg=0.001, dec_deg=0.0, service=spatial_service(rows)
+    )
+    assert target["source_id"] == "target"
+    assert [n["source_id"] for n in neighbours] == ["contaminant"]

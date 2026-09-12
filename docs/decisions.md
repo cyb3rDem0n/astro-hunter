@@ -264,8 +264,9 @@ unlabelled queues, which is only meaningful once accuracy is established.
 **Verify before building.** Which dispositions the TOI catalog exposes, and how
 they are encoded, must be checked against the live catalog rather than assumed.
 
-**Status.** Active. Implemented in `core/metrics.py` (D-035); not yet run
-against real data (D-032, D-035).
+**Status.** Active. Implemented in `core/metrics.py` (D-035); run once
+against real data on a 12-signal pilot (D-035, 2026-09-12) — the full pinned
+benchmark has not been run.
 
 ---
 
@@ -1184,18 +1185,39 @@ states that too, for the same reason as above. **Standing rule:** a check
 added to one path's tool set must be added to the other's in the same
 change, or this parity silently breaks.
 
-**Not yet run against real data.** `runs/pilot2.json` (the agent side) is a
-real, already-collected run. Its rule-engine counterpart
-(`runs/rule_pilot2.json`) does not exist yet: producing it means running
-`scripts/11_rule_triage.py --from-run runs/pilot2.json`, which queries the
-NASA Exoplanet Archive and Gaia — and Gaia has been unreachable throughout
-this session (D-032, `outputs/gaia_probe.log`). `core/metrics.py` and
-`scripts/30_compare_verdicts.py` are covered by unit tests on synthetic
-records; the first real comparison is still pending a working archive.
+**Run against real data (2026-09-12), once D-036 gave Gaia a reachable
+endpoint.** `scripts/11_rule_triage.py --from-run runs/pilot2.json --out
+runs/rule_pilot2.json` produced the rule engine's side of the same 12
+signals `runs/pilot2.json` already held. `scripts/30_compare_verdicts.py`
+against the two:
+
+| | agent macro | rule macro |
+|---|---:|---:|
+| Precision | 51.1% | 83.3% |
+| Recall | 40.0% | 60.0% |
+| F1 | 56.2% | 70.8% |
+
+On this pilot, the free rule engine outscored the agent on every macro
+figure — exactly the question this decision exists to ask ("a rule engine
+that scores well is worth keeping; an agent that cannot beat it is not worth
+its cost"). Both missed `INSTRUMENTAL` entirely, as declared (no instrumental
+check for either path). The agent never produced `FP`; the rules did,
+correctly recalling both `FP` signals as `contaminated`, but at only 33.3%
+precision - the rule that reaches `contaminated` also fired on at least one
+non-`FP` signal.
+
+**Not a stable estimate.** 12 signals, 2 per class: one misclassification
+moves a class's recall by 50 points, which is most of the spread above. This
+is the first proof the whole pipeline - rule engine, agent, and the
+comparison between them - runs correctly end to end on real archive data, not
+a result to generalise from. The pinned benchmark (8,148 rows, D-015) is
+what a real comparison needs, and running the agent over it costs real money
+per D-029/D-027's guardrails.
 
 **Status.** Active. Implemented in `core/metrics.py`,
-`scripts/11_rule_triage.py`, `scripts/30_compare_verdicts.py`. Not yet run
-against `runs/pilot2.json`.
+`scripts/11_rule_triage.py`, `scripts/30_compare_verdicts.py`. First real
+comparison run 2026-09-12 on the 12-signal pilot (`runs/pilot2.json` /
+`runs/rule_pilot2.json`); the full pinned benchmark has not been run.
 
 ---
 

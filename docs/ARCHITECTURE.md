@@ -45,7 +45,7 @@ second domain is a package, not a fork (D-012).
 | `evidence.py` ⧗ | Run domain checks, collect `Evidence`, assemble a `Dossier`. |
 | `agent.py` ⧗ | Orchestration, verdict, guardrails. |
 | `tools.py` ⧗ | Expose checks as tools; enforce provenance and small results. |
-| `metrics.py` ⧗ | Precision, recall, confusion matrix, precision@k. |
+| `metrics.py` | Precision, recall, F1 per class and macro average, agent vs. rule baseline (D-013/D-017/D-021/D-035). Implemented; `precision@k` over the queue is not. |
 
 ### Domains (`src/astro_hunter/domains/<name>/`)
 

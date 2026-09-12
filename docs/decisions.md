@@ -264,7 +264,8 @@ unlabelled queues, which is only meaningful once accuracy is established.
 **Verify before building.** Which dispositions the TOI catalog exposes, and how
 they are encoded, must be checked against the live catalog rather than assumed.
 
-**Status.** Active. Not yet implemented.
+**Status.** Active. Implemented in `core/metrics.py` (D-035); not yet run
+against real data (D-032, D-035).
 
 ---
 
@@ -418,7 +419,8 @@ the source of truth is the ExoFOP comments field, not this column.
 agent could not gather enough. They coincide in outcome, not in cause. Revisit
 if this class scores anomalously in either direction.
 
-**Status.** Active. `EXPLAINED` implemented; the mapping is not.
+**Status.** Active. `EXPLAINED` implemented; the mapping is implemented in
+`core/metrics.py` (D-035).
 
 ---
 
@@ -1133,3 +1135,64 @@ path is equally unexercised here. The first live run of each should be treated
 as the verification.
 
 **Status.** Active in `neighbours.py` and `catalogs.py`, via `core/adql.py`.
+
+---
+
+## D-035 — `core/metrics.py`: FP scoring, the pinned majority baseline, and checks parity
+
+**Decision.** Implements D-013's comparison, applying D-015's and D-017's
+constraints and D-021's known ceiling. Three choices were not already pinned
+down by those decisions and are recorded here.
+
+**`FP` scored as one merged predicted bucket.** D-017 accepts `EXPLAINED` or
+`CONTAMINATED` as correct for an `FP`-true signal, but does not say how that
+interacts with precision. Chosen: for the purpose of scoring the `FP` class,
+a prediction of either verdict is treated as one merged "predicted FP"
+bucket — precision is (correct `FP`-true signals in that bucket) / (every
+signal predicted `EXPLAINED` or `CONTAMINATED`, regardless of its true
+class). The confusion matrix is unaffected and keeps the two verdicts
+separate, per D-017's explicit requirement to record which was produced;
+only the per-class precision/recall/F1 table merges them. Consequence worth
+noting: because `CONTAMINATED` alone can populate the merged bucket, the
+`FP` class's precision and recall do not go to zero when the rule engine
+never emits `EXPLAINED` (D-021) — that ceiling would not show up in the
+per-class numbers at all if it weren't stated separately, which is why
+`format_report` states it as text rather than leaving it to be inferred.
+
+**Majority baseline from the pinned snapshot, not the stratified sample.**
+D-015 says raw accuracy is forbidden as a headline metric, and gives 59.4%
+as the majority-class share of *all* pinned rows including the 14 unlabelled
+ones. Evaluation itself excludes those 14 rows (D-015), so the comparable
+number is the majority share of the 8,134 *labelled* rows: 4836 PC ÷ 8134 ≈
+59.5%. `core.metrics.PINNED_SNAPSHOT_COUNTS` transcribes D-015's per-class
+counts (not a rounded percentage) so this stays auditable against the table
+D-015 already committed, and `majority_baseline_share` computes the ratio
+rather than hard-coding it.
+
+**Checks parity between the two evaluated paths.** `scripts/20_agent_triage.py`
+never exposes an instrumental check to the agent — the TOI queue carries no
+light curve, so there is nothing for it to check. The new
+`scripts/11_rule_triage.py`, which produces the rule engine's side of this
+comparison, is therefore required to wire the identical two checks
+(`crossmatch_confirmed`, `crossmatch_neighbours`) and no more, even though
+`core.evidence.build_dossier` would happily accept an instrumental check if
+one were passed to it. Giving one path a check the other lacks would make
+the comparison partly measure evidence access instead of judgement. This is
+why `FA`/`INSTRUMENTAL` is unreachable by *both* paths in this evaluation,
+not only by the rule engine the way `EXPLAINED` is — and `format_report`
+states that too, for the same reason as above. **Standing rule:** a check
+added to one path's tool set must be added to the other's in the same
+change, or this parity silently breaks.
+
+**Not yet run against real data.** `runs/pilot2.json` (the agent side) is a
+real, already-collected run. Its rule-engine counterpart
+(`runs/rule_pilot2.json`) does not exist yet: producing it means running
+`scripts/11_rule_triage.py --from-run runs/pilot2.json`, which queries the
+NASA Exoplanet Archive and Gaia — and Gaia has been unreachable throughout
+this session (D-032, `outputs/gaia_probe.log`). `core/metrics.py` and
+`scripts/30_compare_verdicts.py` are covered by unit tests on synthetic
+records; the first real comparison is still pending a working archive.
+
+**Status.** Active. Implemented in `core/metrics.py`,
+`scripts/11_rule_triage.py`, `scripts/30_compare_verdicts.py`. Not yet run
+against `runs/pilot2.json`.

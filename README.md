@@ -31,43 +31,83 @@ That is what this project automates.
 
 **Input** — a signal: identifier, coordinates, period, epoch, depth.
 
-**Processing** — an agent orchestrating deterministic tools: catalog
-cross-match, instrumental-window checks, literature search, neighbour analysis.
+**Processing** — two independent judges see the same evidence and are
+compared against each other, not just against the truth:
 
-**Output** — a dossier. Every statement carries its source: catalog name,
-matched identifier, angular separation, retrieval time. Plus a verdict and a
-confidence, labelled as the agent's own summary.
+- A **rule engine** (`core/evidence.py`) applies ordered, deterministic rules
+  to whatever evidence was collected. It is free to run over the whole
+  labelled benchmark and costs nothing, which makes it the baseline the agent
+  has to beat.
+- An **agent** (`core/agent.py`) — a language model reasoning over the same
+  checks, exposed as tools through an MCP server (`mcp/server.py`) — decides
+  what to call and when, and submits its own verdict through a structured
+  tool call rather than free text.
 
-**The rule.** The agent never produces a scientific number and never states
-anything without a source. Numbers come from tools. An astronomer can check the
-output without redoing the work.
+Both draw on the same domain checks: a confirmed-planet cross-match against
+the NASA Exoplanet Archive (`domains/exoplanets/catalogs.py`), and an
+aperture-contamination check against Gaia DR3
+(`domains/exoplanets/neighbours.py`) that now fails over across Gaia's
+official partner data centres — ESA, then the ARI and AIP mirrors — since
+ESA's query engine has a documented history of multi-hour outages. A third
+check, instrumental-window coincidence (`domains/exoplanets/instrumental.py`),
+feeds the rule engine but is not yet exposed to the agent, since it needs a
+light curve the TOI queue does not carry — so today's comparison measures
+judgement under identical, but not complete, evidence. Literature search is
+named in the evidence model (`EvidenceKind.LITERATURE`) but has no check
+behind it yet.
+
+**Output** — a dossier. Every statement carries its source — catalog name,
+matched identifier, angular separation, retrieval time, and *which* archive
+answered when more than one could have — plus a verdict and a confidence,
+labelled as that judge's own summary, never as a scientific measurement.
+
+**The rule.** Neither judge produces a scientific number, and neither states
+anything without a source. Numbers come from the tools. An astronomer can
+check the output without redoing the work.
 
 ## How it is measured
 
-Not demonstrated — measured.
+Not demonstrated — measured, against two things at once: the truth, and the
+cheaper alternative.
 
-The TOI catalog carries dispositions assigned by human experts. Hide the
-disposition, run the agent, compare the verdict. Precision, recall, confusion
-matrix, on real data with labels this project did not create.
+The TOI catalog carries dispositions assigned by human experts, pinned to a
+dated snapshot (8,148 rows, D-015) so results stay comparable over time. The
+disposition is hidden from both judges; each produces a verdict; `core/metrics.py`
+reports precision, recall and F1 per class plus the macro average for both,
+side by side — never raw accuracy, since the classes are skewed enough that
+guessing the majority class alone scores 59.5%. A TESS false positive can
+mean two different things (an eclipsing binary on the target, or a
+contaminating one nearby), and the disposition alone can't tell them apart,
+so either correct verdict scores as correct.
 
-This shows the agent judges as an expert would. It does not show discovery:
-labelled candidates have already been vetted. Discovery means pointing the
-system at unlabelled queues, which is only meaningful once accuracy is
-established.
+This shows whether either judge reasons as an expert would, and whether the
+agent's added cost buys anything the free rule engine doesn't already get
+right. It does not show discovery: labelled candidates have already been
+vetted. Discovery means pointing the system at unlabelled queues, which is
+only meaningful once accuracy is established. The comparison tooling is
+implemented (`scripts/11_rule_triage.py`, `scripts/20_agent_triage.py`,
+`scripts/30_compare_verdicts.py`) but has not yet been run against the full
+pinned benchmark, only small pilot samples.
 
 ## Status
 
-Early. The photometric proving ground works; the triage layer is documented and
-scaffolded, not implemented.
+The photometric proving ground and the full triage loop — rules, agent, and
+the comparison between them — all work end to end. What's left is the parts
+that turn a loop that runs once into a system that runs continuously.
 
 | Component | State |
 |---|---|
 | TESS acquisition and preprocessing | working |
 | BLS transit search | working, validated on Pi Mensae |
-| Core triage models | implemented |
-| Catalog cross-match | not implemented |
-| Agent loop | not implemented |
-| Benchmark against dispositions | not implemented |
+| Core triage models (`Signal`, `Evidence`, `Dossier`, `Verdict`) | implemented |
+| Catalog cross-match (confirmed planets, aperture contamination) | implemented; Gaia queries fail over across partner data centres |
+| Instrumental-window checks | implemented for the rule engine; not yet exposed to the agent |
+| MCP tool server | implemented |
+| Rule-based verdict engine (the agent's baseline) | implemented |
+| Agent loop | implemented |
+| Benchmark comparison (agent vs. rule baseline vs. expert dispositions) | implemented; not yet run against the full benchmark |
+| Candidate queue (persistence, resumability) | not implemented |
+| Domain-interpretation layer as its own module (`domains/exoplanets/domain.py`) | not implemented — logic currently lives directly in the check modules |
 
 ## Where this project came from
 
@@ -100,6 +140,8 @@ observational data, and it will eventually produce queues of its own.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — structural boundaries
 - [`docs/decisions.md`](docs/decisions.md) — why each choice is what it is
 - [`docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md`](docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md) — the photometry
+- [`docs/stages/`](docs/stages/) — per-stage documentation: what a scientific
+  component does, why, and how to read its output
 
 ## Licence
 

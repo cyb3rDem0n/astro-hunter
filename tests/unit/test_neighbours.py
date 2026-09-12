@@ -4,7 +4,9 @@ import pytest
 
 from astro_hunter.core.models import EvidenceKind, Signal
 from astro_hunter.domains.exoplanets.neighbours import (
+    TABLE,
     CatalogUnavailable,
+    GaiaEndpoint,
     corrected_depth,
     crossmatch_neighbours,
     dilution,
@@ -89,7 +91,7 @@ def test_a_bright_neighbour_can_explain_a_shallow_transit():
 def test_nearest_source_is_taken_as_the_target():
     rows = [src(POS["ra_deg"] + 0.002, POS["dec_deg"], 14.0, "neighbour"),
             src(POS["ra_deg"], POS["dec_deg"], 10.0, "target")]
-    target, neighbours = find_neighbours(**POS, service=FakeService(rows))
+    target, neighbours, _ = find_neighbours(**POS, service=FakeService(rows))
     assert target["source_id"] == "target"
     assert [n["source_id"] for n in neighbours] == ["neighbour"]
 
@@ -97,14 +99,14 @@ def test_nearest_source_is_taken_as_the_target():
 def test_sources_outside_the_aperture_are_dropped():
     rows = [src(POS["ra_deg"], POS["dec_deg"], 10.0, "target"),
             src(POS["ra_deg"], POS["dec_deg"] + 0.05, 11.0, "far")]   # 180 arcsec
-    _, neighbours = find_neighbours(**POS, radius_arcsec=60.0, service=FakeService(rows))
+    _, neighbours, _ = find_neighbours(**POS, radius_arcsec=60.0, service=FakeService(rows))
     assert neighbours == []
 
 
 def test_sources_too_faint_to_matter_are_dropped():
     rows = [src(POS["ra_deg"], POS["dec_deg"], 10.0, "target"),
             src(POS["ra_deg"] + 0.001, POS["dec_deg"], 25.0, "negligible")]
-    _, neighbours = find_neighbours(**POS, mag_limit=8.0, service=FakeService(rows))
+    _, neighbours, _ = find_neighbours(**POS, mag_limit=8.0, service=FakeService(rows))
     assert neighbours == []
 
 
@@ -113,7 +115,7 @@ def test_neighbours_are_ordered_by_flux_not_distance():
     rows = [src(POS["ra_deg"], POS["dec_deg"], 10.0, "target"),
             src(POS["ra_deg"] + 0.0005, POS["dec_deg"], 17.0, "faint-close"),
             src(POS["ra_deg"] + 0.002, POS["dec_deg"], 11.0, "bright-far")]
-    _, neighbours = find_neighbours(**POS, service=FakeService(rows))
+    _, neighbours, _ = find_neighbours(**POS, service=FakeService(rows))
     assert [n["source_id"] for n in neighbours] == ["bright-far", "faint-close"]
 
 
@@ -187,7 +189,7 @@ def test_no_source_close_enough_means_no_target():
     # Offset in declination, not right ascension: at dec -80 the meridians
     # converge, so 0.008 deg of RA is under 5 arcsec (D-018).
     rows = [src(POS["ra_deg"], POS["dec_deg"] + 0.005, 12.0, "far")]   # 18 arcsec
-    target, neighbours = find_neighbours(**POS, service=FakeService(rows))
+    target, neighbours, _ = find_neighbours(**POS, service=FakeService(rows))
     assert target is None
     assert neighbours == []
 
@@ -240,7 +242,7 @@ def test_exact_separation_is_still_filtered_after_the_cone():
         src(POS["ra_deg"], POS["dec_deg"], 12.0, "target"),
         src(POS["ra_deg"], POS["dec_deg"] + 0.03, 12.0, "108-arcsec-away"),
     ]
-    target, neighbours = find_neighbours(**POS, service=FakeService(rows))
+    target, neighbours, _ = find_neighbours(**POS, service=FakeService(rows))
     assert target["source_id"] == "target"
     assert [n["source_id"] for n in neighbours] == []
 
@@ -258,8 +260,88 @@ def test_an_aperture_beside_ra_zero_sees_across_the_seam(spatial_service):
         src(359.9995, 0.0, 12.0, "target"),
         src(359.99, 0.0, 13.0, "contaminant"),
     ]
-    target, neighbours = find_neighbours(
+    target, neighbours, _ = find_neighbours(
         ra_deg=0.001, dec_deg=0.0, service=spatial_service(rows)
     )
     assert target["source_id"] == "target"
     assert [n["source_id"] for n in neighbours] == ["contaminant"]
+
+
+# --- partner data-centre failover (D-036) --------------------------------------
+
+def endpoint(name, service_or_error):
+    """A GaiaEndpoint backed by a FakeService, for exercising the failover loop
+    without a real URL or breaker."""
+    if isinstance(service_or_error, str):
+        service = FakeService(error=service_or_error)
+    else:
+        service = FakeService(service_or_error)
+    return GaiaEndpoint(name=name, url="", table=TABLE, service=service)
+
+
+def test_a_failing_endpoint_falls_through_to_the_next():
+    rows = [src(POS["ra_deg"], POS["dec_deg"], 10.0, "target")]
+    endpoints = (
+        endpoint("Gaia DR3 / ESA", "timeout"),
+        endpoint("Gaia DR3 / ARI mirror", rows),
+    )
+    target, _, gaia_source = find_neighbours(**POS, endpoints=endpoints)
+    assert target["source_id"] == "target"
+    assert gaia_source == "Gaia DR3 / ARI mirror"
+
+
+def test_gaia_source_names_whichever_endpoint_actually_answered():
+    """Not just 'it worked' - which archive is a provenance fact (D-014)."""
+    rows = [src(POS["ra_deg"], POS["dec_deg"], 10.0, "target")]
+    endpoints = (endpoint("Gaia DR3 / AIP mirror", rows),)
+    _, _, gaia_source = find_neighbours(**POS, endpoints=endpoints)
+    assert gaia_source == "Gaia DR3 / AIP mirror"
+
+
+def test_every_endpoint_failing_raises_with_every_endpoints_error():
+    endpoints = (
+        endpoint("Gaia DR3 / ESA", "timeout"),
+        endpoint("Gaia DR3 / ARI mirror", "connection refused"),
+    )
+    with pytest.raises(CatalogUnavailable) as exc_info:
+        find_neighbours(**POS, endpoints=endpoints)
+    message = str(exc_info.value)
+    assert "Gaia DR3 / ESA" in message and "timeout" in message
+    assert "Gaia DR3 / ARI mirror" in message and "connection refused" in message
+
+
+def test_no_target_found_still_reports_which_endpoint_answered():
+    """A query can succeed and simply find nothing - the endpoint identity is
+    still a real fact, not something only a successful match carries."""
+    rows = [src(POS["ra_deg"], POS["dec_deg"] + 0.05, 12.0, "far")]   # outside aperture
+    endpoints = (endpoint("Gaia DR3 / AIP mirror", rows),)
+    target, neighbours, gaia_source = find_neighbours(**POS, radius_arcsec=60.0, endpoints=endpoints)
+    assert target is None
+    assert neighbours == []
+    assert gaia_source == "Gaia DR3 / AIP mirror"
+
+
+def test_crossmatch_evidence_source_matches_the_answering_endpoint():
+    """The whole point of D-036: not just find_neighbours' return value, but
+    every Evidence crossmatch_neighbours emits must carry it."""
+    rows = [
+        src(POS["ra_deg"], POS["dec_deg"], 10.0, "target"),
+        src(POS["ra_deg"] + 0.001, POS["dec_deg"], 12.0, "n1"),
+    ]
+    endpoints = (
+        endpoint("Gaia DR3 / ESA", "timeout"),
+        endpoint("Gaia DR3 / ARI mirror", rows),
+    )
+    ev = crossmatch_neighbours(signal(depth_ppm=500), endpoints=endpoints)
+    assert ev, "expected at least one Evidence item"
+    for e in ev:
+        # The DERIVED dilution-correction evidence wraps the endpoint name in
+        # a compound description rather than repeating it bare - both still
+        # name the answering endpoint, which is what matters here.
+        assert "Gaia DR3 / ARI mirror" in e.source
+
+
+def test_crossmatch_evidence_source_matches_the_answering_endpoint_when_no_target():
+    endpoints = (endpoint("Gaia DR3 / ARI mirror", []),)
+    ev = crossmatch_neighbours(signal(), endpoints=endpoints)
+    assert ev[0].source == "Gaia DR3 / ARI mirror"

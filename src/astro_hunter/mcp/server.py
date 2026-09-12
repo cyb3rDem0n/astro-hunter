@@ -137,7 +137,7 @@ def check_aperture_contamination(
     summary = evidence[0]
     if summary.payload.get("target_found") is False:
         return {
-            "source": "Gaia DR3",
+            "source": summary.source,
             "target_found": False,
             "finding": summary.summary,
         }
@@ -154,7 +154,7 @@ def check_aperture_contamination(
     ]
 
     return {
-        "source": "Gaia DR3",
+        "source": summary.source,
         "target_found": True,
         "target_source_id": summary.payload.get("target_source_id"),
         "dilution": summary.payload.get("dilution"),

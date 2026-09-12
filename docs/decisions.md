@@ -1196,3 +1196,86 @@ records; the first real comparison is still pending a working archive.
 **Status.** Active. Implemented in `core/metrics.py`,
 `scripts/11_rule_triage.py`, `scripts/30_compare_verdicts.py`. Not yet run
 against `runs/pilot2.json`.
+
+---
+
+## D-036 — Gaia queries fail over across CU9 partner data centres
+
+**Decision.** `neighbours.py` no longer queries ESA's Gaia archive alone. It
+tries, in order, ESA (`gea.esac.esa.int`, `gaiadr3.gaia_source`), then two
+official CU9 partner mirrors: ARI in Heidelberg
+(`gaia.ari.uni-heidelberg.de/tap`, `gaiadr3.gaia_source_lite`) and AIP in
+Potsdam (`gaia.aip.de/tap`, `gaiadr3.gaia_source_lite`). Any failure at one
+endpoint - an already-open circuit breaker, a fresh timeout, anything - moves
+to the next; `CatalogUnavailable` is only raised once every endpoint has
+failed. Each endpoint keeps its own `CircuitBreaker` (D-033's "two archives
+never share a fate" applied one level down: three mirrors never share one
+either).
+
+**Rationale.** ESA's query engine has a documented history of multi-hour
+outages (D-032, D-033) and was down again for the entire session this was
+built in. Partner data centres are official Gaia infrastructure, not an ad
+hoc workaround - CU9 runs them specifically so the archive survives one
+member's outage.
+
+**Verified live, not assumed - and one assumption corrected in the process.**
+Checked directly against each service this session, not taken from
+documentation:
+
+| Endpoint | Reachable? | Table found |
+|---|---|---|
+| ESA | `/availability`, `/capabilities` answer; sync queries time out (matches D-032/D-033, `outputs/gaia_probe.log`) | `gaiadr3.gaia_source`, 152 columns |
+| ARI | Fully working; a `TAP_SCHEMA.columns` query answered in 0.56 s | `gaiadr3.gaia_source_lite`, **51** columns total, and full `gaiadr3.gaia_source` |
+| AIP | Fully working; 0.75 s | `gaiadr3.gaia_source_lite`, **52** columns total, and full `gaiadr3.gaia_source` |
+| Observatoire de Paris (`gaia.obspm.fr/tap-server/tap`) | Found in a web search as a documented mirror. **Not a working TAP endpoint**: the URL returns the site's HTML homepage, not a VOTABLE response. Dropped. | — |
+
+`gaiadr3.gaia_source_lite` was described going in as a seven-column table.
+That is not what a live `TAP_SCHEMA.columns` query shows - it is a genuinely
+reduced table (51-52 columns against `gaia_source`'s 152-153), not a
+seven-column one. What is true, and was checked directly rather than
+assumed: the seven columns this module actually selects (`source_id, ra, dec,
+phot_g_mean_mag, parallax, pmra, pmdec`) are present at both ARI and AIP,
+with units matching what is already assumed for `gaia_source`
+(`deg`/`deg`/`mag`/`mas`/`mas.yr**-1`/`mas.yr**-1`). The table choice was
+right; the "seven columns" description of it was not, and is not repeated as
+fact here. This is the same lesson as the Paris endpoint, from the opposite
+direction: a specific, correct-sounding claim still needs to be checked
+against the live service rather than trusted, in either the optimistic or
+the pessimistic direction.
+
+**Schemas are not assumed identical across mirrors.** Each `GaiaEndpoint`
+carries its own verified `table`, rather than one `TABLE` constant used
+everywhere. ARI and AIP happen to share `gaiadr3.gaia_source_lite` today;
+nothing in the design requires that to stay true.
+
+**Provenance changes with the answering archive (D-014).** `find_neighbours`
+now returns `(target, neighbours, gaia_source)` rather than a 2-tuple -
+carrying which archive answered required a real signature change, since a
+query can succeed with zero rows and there is no way to attach "which
+archive returned nothing" to a `None` target otherwise. `crossmatch_neighbours`
+uses that value as every emitted `Evidence.source`, replacing five previously
+hardcoded `"Gaia DR3"` literals; `mcp.server.check_aperture_contamination`
+reads it from the evidence instead of hardcoding it too. ESA and ARI are the
+same underlying release queried through different software, and D-014 treats
+"where a claim came from" as exactly the kind of fact that must not be
+silently fixed.
+
+**Numerically neutral where it matters.** The seven selected columns, their
+units, and the local exact-separation/dilution/exclusion computations
+(D-018-style prefilter-then-exact-match) are unchanged regardless of which
+endpoint answers. Only the provenance string and, in principle, minor
+per-source floating-point differences between independently-hosted copies of
+the same release could differ - not the method.
+
+**Verified end to end, live, in this session.** With ESA confirmed down,
+`find_neighbours(ra_deg=84.29928, dec_deg=-80.464604, radius_arcsec=60.0)`
+(Pi Mensae) was run against the real default chain with no service/endpoint
+override. ESA exhausted its retry budget (189 s, consistent with D-032's
+worst-case estimate), then ARI answered: target found at 0.547 arcsec,
+`g_mag` 5.51, zero neighbours - `gaia_source` correctly read
+`"Gaia DR3 / ARI mirror"`. This is the real failover happening, not a mocked
+demonstration of it.
+
+**Status.** Active. Implemented in `neighbours.py` and `mcp/server.py`.
+`catalogs.py` (NASA Exoplanet Archive) is untouched - this was scoped to
+Gaia only.

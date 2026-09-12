@@ -25,14 +25,25 @@ ignores the pixel response function, so the flux fractions are approximations
 that are useful for ranking and exclusion, not for validation. Statistical
 validation of a candidate needs a tool that models the pixel response, such as
 TRICERATOPS.
+
+**Partner data centres (D-036).** ESA's own archive is not the only place to
+ask: Gaia's CU9 consortium runs official mirrors, and ESA's query engine has
+a documented history of multi-hour outages (D-032, D-033). Queries fail over,
+in order, from ESA to two partner mirrors, ARI (Heidelberg) and AIP
+(Potsdam), each with its own circuit breaker so one archive's outage cannot
+be mistaken for another's. Which archive actually answered is recorded as
+provenance (D-014) - `find_neighbours` returns it, and `crossmatch_neighbours`
+uses it as every emitted `Evidence`'s `source`, because it changes: an ESA
+result and an ARI result are the same underlying release queried through
+different software, and a claim's source is not an implementation detail.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 import astropy.units as u
-import pyvo
 from astropy.coordinates import SkyCoord
 
 from astro_hunter.core.adql import cone_predicate
@@ -56,20 +67,64 @@ DEFAULT_TARGET_RADIUS_ARCSEC = TESS_PIXEL_ARCSEC / 2
 
 
 class CatalogUnavailable(RuntimeError):
-    """The archive could not be reached. Distinct from 'no neighbours found'."""
+    """No endpoint answered. Distinct from 'no neighbours found'."""
 
 
-# One breaker for the Gaia archive, shared by every call in a run. Gaia's query
-# engine has been observed stalled for twelve hours at a stretch (D-032); this is
-# what stops a batch from paying the full retry budget once per signal to learn
-# that again. Module-level because a run is a process, and `_service()` builds a
-# fresh service per query — a caller wanting its own can inject one instead.
+@dataclass(frozen=True)
+class GaiaEndpoint:
+    """One Gaia TAP mirror: its own URL, its own table, its own circuit breaker.
+
+    Two mirrors must never share a fate (D-033) - ESA being down says nothing
+    about ARI - so each endpoint carries its own `CircuitBreaker` rather than
+    a shared one. Schemas are not assumed identical between mirrors either
+    (D-036, verified live): `table` is whatever was actually confirmed to
+    carry the seven columns this module needs at that specific service.
+
+    `service`, when set, is used as-is instead of `url`/`breaker` - the seam
+    tests inject through, and what the legacy `find_neighbours(service=...)`
+    parameter becomes internally (a one-element endpoint list).
+    """
+
+    name: str
+    url: str
+    table: str
+    breaker: CircuitBreaker = field(default_factory=CircuitBreaker)
+    service: object | None = None
+
+    def resolve(self):
+        return (
+            self.service
+            if self.service is not None
+            else tap_service(self.url, breaker=self.breaker)
+        )
+
+
+# One breaker per archive, shared by every call in a run against that archive
+# (D-032, D-033). Kept as a module-level name distinct from ESA's own breaker
+# because `neighbours.BREAKER is not catalogs.BREAKER` is a standing
+# regression test for "two archives never share a fate" - it now also holds,
+# unchanged, one level down: `ESA.breaker is not ARI.breaker is not AIP.breaker`.
 BREAKER = CircuitBreaker()
 
+# Live-verified this session (D-036): ESA's sync endpoint answers /availability
+# and /capabilities but its query engine is stalled (D-032, D-033). ARI and AIP
+# are official CU9 partner mirrors and, checked directly against each service's
+# TAP_SCHEMA.columns, both expose gaiadr3.gaia_source_lite with the seven
+# columns below, matching units, right now. A third candidate found in Gaia
+# documentation (Observatoire de Paris, gaia.obspm.fr/tap-server/tap) was
+# tried and dropped: the URL returns the site's HTML homepage, not a TAP
+# response - documentation is not verification.
+ESA = GaiaEndpoint(name="Gaia DR3 / ESA", url=TAP_URL, table=TABLE, breaker=BREAKER)
+ARI = GaiaEndpoint(
+    name="Gaia DR3 / ARI mirror",
+    url="https://gaia.ari.uni-heidelberg.de/tap",
+    table="gaiadr3.gaia_source_lite",
+)
+AIP = GaiaEndpoint(
+    name="Gaia DR3 / AIP mirror", url="https://gaia.aip.de/tap", table="gaiadr3.gaia_source_lite"
+)
 
-def _service() -> pyvo.dal.TAPService:
-    """A service that times out rather than hanging, and gives up on an outage."""
-    return tap_service(TAP_URL, breaker=BREAKER)
+DEFAULT_ENDPOINTS: tuple[GaiaEndpoint, ...] = (ESA, ARI, AIP)
 
 
 def flux_ratio(neighbour_mag: float, target_mag: float) -> float:
@@ -111,6 +166,40 @@ def max_depth_from_neighbour(ratio: float, all_ratios: list[float]) -> float:
     return ratio / (1.0 + sum(all_ratios))
 
 
+def _select_adql(table: str, ra_deg: float, dec_deg: float, radius_arcsec: float) -> str:
+    return f"""
+        SELECT source_id, ra, dec, phot_g_mean_mag, parallax, pmra, pmdec
+        FROM {table}
+        WHERE {cone_predicate(ra_deg, dec_deg, radius_arcsec)}
+          AND phot_g_mean_mag IS NOT NULL
+    """
+
+
+def _query_endpoints(ra_deg: float, dec_deg: float, radius_arcsec: float, endpoints):
+    """Try each endpoint in order; any failure moves to the next (D-036).
+
+    This covers an already-open circuit breaker with no special-casing -
+    `CircuitOpen` is just one more `Exception` - as well as a fresh failure
+    that has nothing to do with a breaker at all. Only once every endpoint has
+    failed is the query itself a failure.
+
+    Returns (rows, endpoint that answered). The endpoint is returned even when
+    the archive answered with zero matching rows, since "which archive
+    answered" and "how many rows it returned" are independent facts.
+    """
+    failures = []
+    for ep in endpoints:
+        adql = _select_adql(ep.table, ra_deg, dec_deg, radius_arcsec)
+        try:
+            rows = ep.resolve().search(adql).to_table()
+        except Exception as exc:  # noqa: BLE001 - any failure tries the next endpoint
+            failures.append(f"{ep.name}: {exc}")
+            continue
+        return rows, ep
+
+    raise CatalogUnavailable(f"every Gaia endpoint failed: {'; '.join(failures)}")
+
+
 def find_neighbours(
     ra_deg: float,
     dec_deg: float,
@@ -118,27 +207,35 @@ def find_neighbours(
     mag_limit: float = DEFAULT_MAG_LIMIT,
     target_radius_arcsec: float = DEFAULT_TARGET_RADIUS_ARCSEC,
     service=None,
-) -> tuple[dict | None, list[dict]]:
-    """Gaia DR3 sources in the aperture.
+    endpoints: tuple[GaiaEndpoint, ...] | None = None,
+) -> tuple[dict | None, list[dict], str]:
+    """Gaia DR3 sources in the aperture, tried across the partner chain (D-036).
 
-    Returns (target, neighbours). The target is the source closest to the given
-    position *and* within ``target_radius_arcsec`` of it; if nothing is that
-    close, there is no identifiable target and (None, []) is returned.
+    Returns (target, neighbours, gaia_source). The target is the source
+    closest to the given position *and* within ``target_radius_arcsec`` of
+    it; if nothing is that close, there is no identifiable target and
+    (None, [], gaia_source) is returned - ``gaia_source`` is still meaningful,
+    since a query can succeed and simply find nothing.
 
     That radius is not a detail. Gaia sees something almost everywhere, so
     without it a distant unrelated source becomes the target and the dilution,
     the corrected depth and every exclusion are computed against the wrong star.
+
+    ``service``, when given, pins a single service and disables failover -
+    what every existing caller passing it explicitly wants (a fixed test
+    double, or `tools/measure_gaia_latency.py` measuring one archive on
+    purpose). ``endpoints`` overrides the default partner chain directly, for
+    tests that need to exercise the failover itself.
     """
-    adql = f"""
-        SELECT source_id, ra, dec, phot_g_mean_mag, parallax, pmra, pmdec
-        FROM {TABLE}
-        WHERE {cone_predicate(ra_deg, dec_deg, radius_arcsec)}
-          AND phot_g_mean_mag IS NOT NULL
-    """
-    try:
-        rows = (service or _service()).search(adql).to_table()
-    except Exception as exc:
-        raise CatalogUnavailable(f"Gaia query failed: {exc}") from exc
+    if endpoints is None:
+        endpoints = (
+            (GaiaEndpoint(name="Gaia DR3", url="", table=TABLE, service=service),)
+            if service is not None
+            else DEFAULT_ENDPOINTS
+        )
+
+    rows, answered_by = _query_endpoints(ra_deg, dec_deg, radius_arcsec, endpoints)
+    gaia_source = answered_by.name
 
     centre = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame="icrs")
     found = []
@@ -156,11 +253,11 @@ def find_neighbours(
         })
 
     if not found:
-        return None, []
+        return None, [], gaia_source
 
     found.sort(key=lambda s: s["separation_arcsec"])
     if found[0]["separation_arcsec"] > target_radius_arcsec:
-        return None, []
+        return None, [], gaia_source
     target = found[0]
     neighbours = [
         s for s in found[1:]
@@ -171,24 +268,31 @@ def find_neighbours(
         n["flux_ratio"] = flux_ratio(n["g_mag"], target["g_mag"])
 
     neighbours.sort(key=lambda s: s["flux_ratio"], reverse=True)
-    return target, neighbours[:MAX_NEIGHBOURS_REPORTED]
+    return target, neighbours[:MAX_NEIGHBOURS_REPORTED], gaia_source
 
 
 def crossmatch_neighbours(
     signal,
     radius_arcsec: float = DEFAULT_APERTURE_ARCSEC,
     service=None,
+    endpoints: tuple[GaiaEndpoint, ...] | None = None,
 ) -> list[Evidence]:
-    """Aperture contamination as Evidence for a Dossier."""
-    target, neighbours = find_neighbours(
-        signal.ra_deg, signal.dec_deg, radius_arcsec, service=service
+    """Aperture contamination as Evidence for a Dossier.
+
+    Every `Evidence.source` below names the archive that actually answered
+    (D-014, D-036) rather than a fixed "Gaia DR3" literal - ESA and ARI are
+    the same release, but a claim's source is where it came from, not what
+    it is about.
+    """
+    target, neighbours, gaia_source = find_neighbours(
+        signal.ra_deg, signal.dec_deg, radius_arcsec, service=service, endpoints=endpoints
     )
     retrieved = datetime.now(UTC)
 
     if target is None:
         return [Evidence(
             kind=EvidenceKind.NEIGHBOUR,
-            source="Gaia DR3",
+            source=gaia_source,
             summary=(
                 f"no Gaia source within {DEFAULT_TARGET_RADIUS_ARCSEC:g} arcsec of the "
                 f"position: the signal cannot be attributed to a star"
@@ -204,7 +308,7 @@ def crossmatch_neighbours(
     brighter = [n for n in neighbours if n["g_mag"] < target["g_mag"]]
     evidence = [Evidence(
         kind=EvidenceKind.NEIGHBOUR,
-        source="Gaia DR3",
+        source=gaia_source,
         summary=(
             f"{len(neighbours)} contaminating source(s) within {radius_arcsec:g} arcsec; "
             f"target contributes {d:.1%} of aperture flux"
@@ -225,7 +329,7 @@ def crossmatch_neighbours(
     if brighter:
         evidence.append(Evidence(
             kind=EvidenceKind.NEIGHBOUR,
-            source="Gaia DR3",
+            source=gaia_source,
             summary=(
                 f"{len(brighter)} source(s) in the aperture are brighter than the "
                 f"assumed target: the position may have resolved to the wrong star"
@@ -241,7 +345,7 @@ def crossmatch_neighbours(
         observed = signal.depth_ppm * 1e-6
         evidence.append(Evidence(
             kind=EvidenceKind.DERIVED,
-            source="dilution correction (Gaia DR3 flux ratios)",
+            source=f"dilution correction ({gaia_source} flux ratios)",
             summary=(
                 f"observed depth {signal.depth_ppm:.0f} ppm corresponds to "
                 f"{corrected_depth(observed, ratios) * 1e6:.0f} ppm on an "
@@ -260,7 +364,7 @@ def crossmatch_neighbours(
             can_explain = capacity >= observed
             evidence.append(Evidence(
                 kind=EvidenceKind.NEIGHBOUR,
-                source="Gaia DR3",
+                source=gaia_source,
                 summary=(
                     f"source {n['source_id']} at {n['separation_arcsec']:g} arcsec "
                     f"could produce at most {capacity * 1e6:.0f} ppm: "

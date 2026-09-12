@@ -78,7 +78,7 @@ def time_one(pos: dict, timeout: float, radius_arcsec: float) -> dict:
 
     start = time.perf_counter()
     try:
-        target, neighbours = find_neighbours(
+        target, neighbours, _ = find_neighbours(
             pos["ra_deg"], pos["dec_deg"], radius_arcsec=radius_arcsec,
             service=tap_service(TAP_URL, timeout=timeout),
         )

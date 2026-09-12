@@ -89,6 +89,11 @@ implemented (`scripts/11_rule_triage.py`, `scripts/20_agent_triage.py`,
 `scripts/30_compare_verdicts.py`) but has not yet been run against the full
 pinned benchmark, only small pilot samples.
 
+A first 12-signal pilot has been run, under conditions that made the two
+paths incomparable: the agent ran while the Gaia archive was unreachable and
+the rule engine did not, so they did not see the same evidence. The result is
+recorded in D-035 and is not reported here as a finding.
+
 ## Status
 
 The photometric proving ground and the full triage loop — rules, agent, and

@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 import pyvo
 
-from astro_hunter.core.http import tap_service
+from astro_hunter.core.http import CircuitBreaker, tap_service
 from astro_hunter.core.models import Signal
 
 TAP_URL = "https://exoplanetarchive.ipac.caltech.edu/TAP"
@@ -49,9 +49,14 @@ class QueueUnavailable(RuntimeError):
     """The catalog could not be reached."""
 
 
+# One breaker for this archive (D-033). See the note in
+# `domains/exoplanets/catalogs.py` on why that module keeps a separate one.
+BREAKER = CircuitBreaker()
+
+
 def _service() -> pyvo.dal.TAPService:
-    """A service that times out rather than hanging. See core.http."""
-    return tap_service(TAP_URL)
+    """A service that times out rather than hanging, and gives up on an outage."""
+    return tap_service(TAP_URL, breaker=BREAKER)
 
 
 def _number(value):

@@ -35,7 +35,7 @@ import astropy.units as u
 import pyvo
 from astropy.coordinates import SkyCoord
 
-from astro_hunter.core.http import tap_service
+from astro_hunter.core.http import CircuitBreaker, tap_service
 from astro_hunter.core.models import Evidence, EvidenceKind
 
 TAP_URL = "https://gea.esac.esa.int/tap-server/tap"
@@ -58,9 +58,17 @@ class CatalogUnavailable(RuntimeError):
     """The archive could not be reached. Distinct from 'no neighbours found'."""
 
 
+# One breaker for the Gaia archive, shared by every call in a run. Gaia's query
+# engine has been observed stalled for twelve hours at a stretch (D-032); this is
+# what stops a batch from paying the full retry budget once per signal to learn
+# that again. Module-level because a run is a process, and `_service()` builds a
+# fresh service per query — a caller wanting its own can inject one instead.
+BREAKER = CircuitBreaker()
+
+
 def _service() -> pyvo.dal.TAPService:
-    """A service that times out rather than hanging. See core.http."""
-    return tap_service(TAP_URL)
+    """A service that times out rather than hanging, and gives up on an outage."""
+    return tap_service(TAP_URL, breaker=BREAKER)
 
 
 def flux_ratio(neighbour_mag: float, target_mag: float) -> float:
@@ -102,18 +110,24 @@ def max_depth_from_neighbour(ratio: float, all_ratios: list[float]) -> float:
     return ratio / (1.0 + sum(all_ratios))
 
 
-def _bounding_box(ra_deg: float, dec_deg: float, radius_arcsec: float):
-    """RA/Dec box for the ADQL prefilter; exact separation is done afterwards."""
-    import math
+def _cone_predicate(ra_deg: float, dec_deg: float, radius_arcsec: float) -> str:
+    """ADQL cone prefilter; the exact separation is still computed afterwards.
 
-    radius_deg = radius_arcsec / 3600.0
-    dec_min = max(-90.0, dec_deg - radius_deg)
-    dec_max = min(90.0, dec_deg + radius_deg)
-    cos_dec = math.cos(math.radians(min(abs(dec_min), abs(dec_max))))
-    if cos_dec < 1e-6:
-        return 0.0, 360.0, dec_min, dec_max
-    ra_pad = radius_deg / cos_dec
-    return ra_deg - ra_pad, ra_deg + ra_pad, dec_min, dec_max
+    This replaces a bounding box on plain ``ra``/``dec`` ranges (D-034). The box
+    had a defect that produced no error: an RA interval built by subtraction does
+    not wrap, so near RA 0 or 360 it read like ``BETWEEN -0.01 AND 0.01`` and
+    matched nothing. Every signal in that strip came back as "no Gaia source at
+    this position" — a wrong answer that looks exactly like a real one.
+
+    A cone has no seam to get wrong, and it is the form Gaia's spatial index
+    serves. It is not a change of method: the selection is still a prefilter,
+    and `find_neighbours` still filters on exact angular separation after it.
+    """
+    return (
+        f"1 = CONTAINS("
+        f"POINT('ICRS', ra, dec), "
+        f"CIRCLE('ICRS', {ra_deg!r}, {dec_deg!r}, {radius_arcsec / 3600.0!r}))"
+    )
 
 
 def find_neighbours(
@@ -134,12 +148,10 @@ def find_neighbours(
     without it a distant unrelated source becomes the target and the dilution,
     the corrected depth and every exclusion are computed against the wrong star.
     """
-    ra_min, ra_max, dec_min, dec_max = _bounding_box(ra_deg, dec_deg, radius_arcsec)
     adql = f"""
         SELECT source_id, ra, dec, phot_g_mean_mag, parallax, pmra, pmdec
         FROM {TABLE}
-        WHERE dec BETWEEN {dec_min} AND {dec_max}
-          AND ra BETWEEN {ra_min} AND {ra_max}
+        WHERE {_cone_predicate(ra_deg, dec_deg, radius_arcsec)}
           AND phot_g_mean_mag IS NOT NULL
     """
     try:

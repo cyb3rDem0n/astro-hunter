@@ -22,7 +22,7 @@ import astropy.units as u
 import pyvo
 from astropy.coordinates import SkyCoord
 
-from astro_hunter.core.http import tap_service
+from astro_hunter.core.http import CircuitBreaker, tap_service
 from astro_hunter.core.models import Evidence, EvidenceKind
 
 TAP_URL = "https://exoplanetarchive.ipac.caltech.edu/TAP"
@@ -46,9 +46,16 @@ class CatalogUnavailable(RuntimeError):
     """
 
 
+# One breaker for this archive (D-033), so a batch stops paying for an outage it
+# has already found. `sources/toi.py` addresses the same host but keeps its own:
+# they sit on opposite sides of the source/domain boundary, and sharing one would
+# couple them for a saving of at most one wasted request budget per run.
+BREAKER = CircuitBreaker()
+
+
 def _service() -> pyvo.dal.TAPService:
-    """A service that times out rather than hanging. See core.http."""
-    return tap_service(TAP_URL)
+    """A service that times out rather than hanging, and gives up on an outage."""
+    return tap_service(TAP_URL, breaker=BREAKER)
 
 
 def period_relation(

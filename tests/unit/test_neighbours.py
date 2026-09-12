@@ -5,6 +5,7 @@ import pytest
 from astro_hunter.core.models import EvidenceKind, Signal
 from astro_hunter.domains.exoplanets.neighbours import (
     CatalogUnavailable,
+    _cone_predicate,
     corrected_depth,
     crossmatch_neighbours,
     dilution,
@@ -206,3 +207,56 @@ def test_a_brighter_neighbour_raises_a_misidentification_alert():
             src(POS["ra_deg"] + 0.002, POS["dec_deg"], 10.0, "much-brighter")]
     ev = crossmatch_neighbours(signal(depth_ppm=900), service=FakeService(rows))
     assert any(e.payload.get("target_identification_doubtful") for e in ev)
+
+
+class RecordingService(FakeService):
+    """Keeps the ADQL it was handed, so the query itself can be asserted on."""
+
+    def __init__(self, rows=None):
+        super().__init__(rows)
+        self.adql = None
+
+    def search(self, adql):
+        self.adql = adql
+        return super().search(adql)
+
+
+def test_the_prefilter_is_a_cone_not_a_coordinate_box():
+    """A box on plain ra/dec has a seam at RA 0; a cone has none, and it is the
+    form Gaia's spatial index serves."""
+    predicate = _cone_predicate(84.29928, -80.464604, 60.0)
+    assert "CONTAINS" in predicate
+    assert "CIRCLE('ICRS'" in predicate
+    assert "BETWEEN" not in predicate
+
+
+@pytest.mark.parametrize("ra_deg", [0.0, 0.004, 359.996, 360.0, 180.0])
+def test_positions_on_the_ra_seam_still_select_their_own_centre(ra_deg):
+    """The defect this replaces: an RA interval built by subtraction does not
+    wrap, so near RA 0 the query read `BETWEEN -0.01 AND 0.01` and matched
+    nothing. Every signal in that strip came back as 'no Gaia source here',
+    which is indistinguishable from a real answer."""
+    service = RecordingService([src(ra_deg, -80.46, 12.0, "centre")])
+    find_neighbours(ra_deg=ra_deg, dec_deg=-80.46, service=service)
+    assert repr(ra_deg) in service.adql
+    assert "BETWEEN" not in service.adql
+
+
+def test_the_cone_radius_is_the_aperture_converted_to_degrees():
+    """ADQL geometry is in degrees; the aperture is quoted in arcseconds.
+    Passing 60 where 60/3600 belongs would query a cone 3600 times too wide."""
+    predicate = _cone_predicate(10.0, 20.0, 60.0)
+    assert repr(60.0 / 3600.0) in predicate
+
+
+def test_exact_separation_is_still_filtered_after_the_cone():
+    """The cone is a prefilter, not the method. A source the archive returns
+    outside the aperture is still dropped locally, so loosening or tightening
+    the prefilter cannot change which neighbours are reported."""
+    rows = [
+        src(POS["ra_deg"], POS["dec_deg"], 12.0, "target"),
+        src(POS["ra_deg"], POS["dec_deg"] + 0.03, 12.0, "108-arcsec-away"),
+    ]
+    target, neighbours = find_neighbours(**POS, service=FakeService(rows))
+    assert target["source_id"] == "target"
+    assert [n["source_id"] for n in neighbours] == []

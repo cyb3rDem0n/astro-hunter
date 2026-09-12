@@ -970,3 +970,143 @@ read past in a list of twelve. Paid-for failures should be stated as failures,
 in one place, at the end.
 
 **Status.** Active.
+
+---
+
+## D-032 — Archive requests retry, shallowly, and the timeout stays at 60 s
+
+**Context.** The pilot runs lost signals to Gaia failures, and the question was
+whether the 60 s timeout from D-028 was simply too short. The plan was to
+measure the real latency distribution over a stratified sample of positions and
+pick a justified number.
+
+**What the measurement found instead.** The ESA Gaia TAP query engine was not
+slow, it was stalled, and it stayed stalled across two sessions more than twelve
+hours apart (2026-09-11 night, 2026-09-12 morning). Measured on 2026-09-12:
+
+| request | result |
+|---|---|
+| `GET /availability` | 200 in 2.19 s |
+| `GET /capabilities` | 200 in 2.48 s |
+| `/sync`, trivial `SELECT TOP 1`, via POST | read timeout at 90 s |
+| `/sync`, same query, via GET | read timeout at 45 s |
+| `/async` job submission (`submit_job`) | read timeout at 30 s |
+| same POST shape to VizieR TAP | answered in 0.43 s |
+
+The static VOSI endpoints answer; everything touching the query engine does
+not, on either HTTP method. A POST of the same shape to a different TAP service
+returns in under half a second, so the local network is not the cause. No
+announced ESA maintenance was found, so the cause is not established — only the
+behaviour is.
+
+**Consequences.**
+
+1. *The timeout stays at 60 s.* No latency distribution could be measured, so
+   there is nothing to justify a different number with, and D-028's value is
+   unchanged rather than adjusted on a guess. The original premise — that 60 s
+   was too short — is still unconfirmed.
+2. *The async endpoint is not the escape hatch* it looked like. Submission
+   itself times out, so there is no job to poll. This was the first thing to
+   check on resuming and it is now answered.
+3. *The retry is deliberately shallow.* A retry pays only when the failure is
+   transient. Against a stalled engine it multiplies the batch's cost by the
+   attempt count and recovers nothing, and this outage lasted over twelve hours.
+   So: three attempts, 2 s and 4 s of jittered backoff, worst case just over
+   three minutes per request — a number paid per signal, in batches of six
+   hundred.
+
+**What retries, and what does not.** Connection errors and timeouts, plus HTTP
+429, 502, 503 and 504 — the server reporting overload or temporary refusal. A
+4xx other than 429 is a malformed query, which will be just as malformed on the
+second attempt. When attempts run out the last real exception is raised, or the
+last response returned, rather than a synthesised error: the caller should see
+what actually happened.
+
+Retrying is safe for these callers because archive requests are reads. The one
+side effect is a duplicated async job submission, which expires server-side.
+
+**Not done, and deliberately.** A circuit breaker — after *n* consecutive
+failures, stop querying that archive for the rest of the batch and record
+`CatalogUnavailable` immediately — is what would actually have saved the pilot
+runs, and it is the natural next step. It is a behaviour change across the batch
+rather than inside one request, so it is proposed rather than assumed.
+
+**Status.** Active. Implemented in `core/http.py`, applied everywhere
+`tap_service` is used. Reproduce with `tools/probe_gaia_endpoint.py`.
+
+---
+
+## D-033 — A batch stops querying an archive it has found to be down
+
+**Context.** D-032 added a retry and deliberately left this out. The retry is
+scoped to one request; an archive that has stopped answering is a property of
+the whole run. With Gaia stalled for twelve hours, every signal in a batch of
+six hundred would independently spend its full retry budget — just over three
+minutes — to rediscover the same outage. That is thirty hours of waiting to
+learn one fact.
+
+**Decision.** `core/http.py` provides a `CircuitBreaker`, and each archive module
+keeps one. After five consecutive failures it opens: requests then fail
+immediately with `CircuitOpen`, which the modules already wrap into
+`CatalogUnavailable`, so the outage becomes evidence at no network cost.
+
+**Why it reopens.** After a five-minute cooldown the next request goes through
+as a probe, and its outcome decides — success closes the breaker, failure
+reopens it. Latching shut would be the opposite error: a brief blip must not
+blind the remaining signals for the rest of a run that costs money. The probe
+is sent without retries, so the standing cost of an outage is one request per
+cooldown rather than a full budget.
+
+**What counts as a failure.** One *exhausted request*, not one attempt —
+otherwise the retry budget and the threshold would multiply. Connection errors,
+timeouts, and a retryable status that outlives its attempts. A 4xx other than
+429 does not count: a malformed query says nothing about the archive's health,
+and six bad queries must not stop a batch from reaching a service that is up.
+
+**Scope.** One breaker per archive module, so Gaia being down says nothing about
+the exoplanet archive. `sources/toi.py` and `domains/exoplanets/catalogs.py`
+address the same host but keep separate breakers: they sit on opposite sides of
+the source/domain boundary, and coupling them would save at most one wasted
+request budget per run.
+
+**Status.** Active. Implemented in `core/http.py`; wired in `neighbours.py`,
+`catalogs.py` and `sources/toi.py`.
+
+---
+
+## D-034 — The Gaia prefilter is a cone, not a coordinate box
+
+**Defect.** `neighbours._bounding_box` built the RA interval by subtracting a
+padding from the centre. RA wraps at 360 and subtraction does not, so for a
+position near the seam the query read `ra BETWEEN -0.0034 AND 0.0034` and
+matched nothing.
+
+**Why it mattered more than an ordinary bug.** It raised no error. The empty
+result travelled the normal path and came out as "no Gaia source within 10.5
+arcsec of the position: the signal cannot be attributed to a star" — a
+confident, wrong statement that is indistinguishable from the true one. The
+invariant that absence of data must not read as absence of signal was being
+violated silently, for every signal in a narrow strip of sky.
+
+**Fix.** The prefilter is now `CONTAINS(POINT('ICRS', ra, dec), CIRCLE(...))`.
+A cone has no seam to get wrong, and it is the form Gaia's spatial index serves.
+
+**Numerically neutral by construction.** The selection was always a prefilter:
+`find_neighbours` computes the exact angular separation with astropy afterwards
+and drops anything outside the aperture. Widening or narrowing the prefilter
+cannot change which neighbours are reported, only how many rows are fetched to
+find them. A test asserts that directly.
+
+**Note the disagreement.** `catalogs._bounding_box` documents the opposite
+choice — comparison operators rather than ADQL geometry, because geometry
+support varies between TAP services. That reasoning holds for a portable query;
+it does not bind the Gaia path, which talks to one service that is the reference
+implementation for ADQL geometry. `catalogs.py` still carries the same RA-wrap
+defect and is **not** fixed here.
+
+**Not verified against the live archive.** ESA has been unreachable throughout
+(D-032), so the ADQL has not been executed once. The change is covered by unit
+tests on the emitted query and on the local filtering; the first live run should
+be treated as the verification.
+
+**Status.** Active for `neighbours.py`. `catalogs.py` unresolved.

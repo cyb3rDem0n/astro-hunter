@@ -28,6 +28,38 @@ from astro_hunter.core.models import Dossier, Evidence, EvidenceKind, Verdict
 PERIOD_MATCHES = {"match"}
 HARMONIC_PREFIX = "harmonic:"
 
+# --- contamination thresholds (D-038) -----------------------------------------
+#
+# "A neighbour could produce the observed depth" is true of nearly every
+# neighbour (D-030: a star four magnitudes fainter still reaches tens of
+# thousands of ppm) and is not, by itself, evidence of contamination - it is
+# the normal state of affairs. CONTAMINATED requires positive evidence
+# instead, mirroring the same fix already made to the agent's prompt (D-030):
+#
+#   (a) the target holds a small share of the aperture flux, with some
+#       neighbour much brighter than it, or
+#   (b) the dilution-corrected depth is physically implausible for a planet.
+
+# Target's share of the aperture flux (`dilution`, see neighbours.py) below
+# which it is a small minority of the light collected - most of what the
+# aperture sees is not the target star.
+TARGET_FLUX_SHARE_FLOOR = 0.2
+
+# A neighbour must contribute at least this many times the target's own flux
+# to count as "much brighter" rather than merely brighter: 10x in flux is
+# ~2.5 magnitudes, comfortably past the marginal case rule 4b (identification
+# doubtful) already screens out.
+BRIGHT_NEIGHBOUR_FLUX_RATIO = 10.0
+
+# Dilution-corrected depth, in ppm, at or above which the eclipsing body is no
+# longer plausibly a planet rather than a stellar/brown-dwarf companion: the
+# same "tens of per cent" boundary already stated in the agent's prompt
+# (core/agent.py SYSTEM_PROMPT, D-030). This is a coarse, stellar-radius-
+# agnostic approximation - the pipeline has no per-target stellar radius to
+# compute an actual planet/star radius ratio - labelled as such rather than
+# presented as a physical model.
+MAX_PLAUSIBLE_PLANET_DEPTH_PPM = 100_000.0
+
 
 def _failure(name: str, exc: Exception) -> Evidence:
     return Evidence(
@@ -136,17 +168,35 @@ def derive_verdict(dossier: Dossier) -> tuple[Verdict, float, str]:
                 f"{e.payload['brighter_neighbours']} source(s) in the aperture are "
                 f"brighter than the assumed target: the identification is unreliable"))
 
-    # 5. A neighbour bright enough to produce the observed depth.
-    culprits = [
-        e for e in dossier.of_kind(EvidenceKind.NEIGHBOUR)
-        if e.payload.get("could_explain_signal")
-    ]
-    if culprits:
-        worst = max(culprits, key=lambda e: e.payload["max_producible_depth_ppm"])
+    # 5. Positive evidence of contamination (D-038) - not mere non-exclusion.
+    neighbour_evidence = dossier.of_kind(EvidenceKind.NEIGHBOUR)
+
+    dilution_evidence = next(
+        (e for e in neighbour_evidence if "dilution" in e.payload), None
+    )
+    if dilution_evidence and dilution_evidence.payload["dilution"] < TARGET_FLUX_SHARE_FLOOR:
+        bright_culprits = [
+            e for e in neighbour_evidence
+            if e.payload.get("flux_ratio", 0) >= BRIGHT_NEIGHBOUR_FLUX_RATIO
+        ]
+        if bright_culprits:
+            worst = max(bright_culprits, key=lambda e: e.payload["flux_ratio"])
+            return (Verdict.CONTAMINATED, 0.6, (
+                f"target holds only {dilution_evidence.payload['dilution']:.0%} of the "
+                f"aperture flux, and {worst.identifier} at {worst.separation_arcsec:g} "
+                f"arcsec is {worst.payload['flux_ratio']:.1f}x brighter than it"))
+
+    depth_evidence = next(
+        (e for e in dossier.of_kind(EvidenceKind.DERIVED)
+         if "corrected_depth_ppm" in e.payload), None
+    )
+    if depth_evidence and (
+        depth_evidence.payload["corrected_depth_ppm"] >= MAX_PLAUSIBLE_PLANET_DEPTH_PPM
+    ):
         return (Verdict.CONTAMINATED, 0.6, (
-            f"source {worst.identifier} at {worst.separation_arcsec:g} arcsec could "
-            f"produce up to {worst.payload['max_producible_depth_ppm']:.0f} ppm, "
-            f"enough to account for the signal"))
+            f"dilution-corrected depth of "
+            f"{depth_evidence.payload['corrected_depth_ppm']:.0f} ppm is physically "
+            f"implausible for a planet"))
 
     # 6. A catalogued host, but this signal is not its known planet.
     unrelated = [

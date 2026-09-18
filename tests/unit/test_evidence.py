@@ -93,11 +93,11 @@ def test_a_harmonic_is_still_the_same_planet():
     assert "2" in why
 
 
-def test_flagged_cadences_win_over_a_capable_neighbour():
+def test_flagged_cadences_win_over_contamination():
     """Rule order: an instrumental explanation is cheaper and more decisive."""
     d = dossier_with(
-        ev(EvidenceKind.NEIGHBOUR, identifier="n1", separation_arcsec=3.0,
-           could_explain_signal=True, max_producible_depth_ppm=5000),
+        ev(EvidenceKind.DERIVED, source="dilution correction",
+           corrected_depth_ppm=200_000),
         ev(EvidenceKind.INSTRUMENTAL_WINDOW, flagged_fraction=0.6),
     )
     assert derive_verdict(d)[0] is Verdict.INSTRUMENTAL
@@ -124,29 +124,70 @@ def test_too_few_covered_transits_is_insufficient():
     assert derive_verdict(d)[0] is Verdict.INSUFFICIENT
 
 
-def test_a_capable_neighbour_is_contamination():
-    d = dossier_with(ev(EvidenceKind.NEIGHBOUR, identifier="n1",
-                        separation_arcsec=4.2, could_explain_signal=True,
-                        max_producible_depth_ppm=8000))
+def test_a_neighbour_that_merely_cannot_be_excluded_is_not_contamination():
+    """The D-030 regression, now enforced in the rule engine too: almost every
+    neighbour clears `could_explain_signal`, so that alone must not condemn."""
+    d = dossier_with(
+        ev(EvidenceKind.NEIGHBOUR, identifier="n1", separation_arcsec=4.2,
+           could_explain_signal=True, max_producible_depth_ppm=8000,
+           flux_ratio=0.05),
+        ev(EvidenceKind.NEIGHBOUR, source="test", dilution=0.9),
+    )
+    assert derive_verdict(d)[0] is Verdict.INTERESTING
+
+
+def test_a_small_target_share_beside_a_much_brighter_star_is_contamination():
+    d = dossier_with(
+        ev(EvidenceKind.NEIGHBOUR, source="test", dilution=0.1),
+        ev(EvidenceKind.NEIGHBOUR, identifier="n1", separation_arcsec=4.2,
+           flux_ratio=15.0, could_explain_signal=True,
+           max_producible_depth_ppm=8000),
+    )
     verdict, _, why = derive_verdict(d)
     assert verdict is Verdict.CONTAMINATED
     assert "n1" in why
 
 
-def test_the_brightest_capable_neighbour_is_the_one_named():
+def test_a_small_target_share_alone_is_not_enough_without_a_bright_culprit():
+    """Many faint neighbours can dilute the aperture without any one of them
+    being a plausible culprit - the fraction alone is not the criterion."""
     d = dossier_with(
+        ev(EvidenceKind.NEIGHBOUR, source="test", dilution=0.1),
+        ev(EvidenceKind.NEIGHBOUR, identifier="n1", separation_arcsec=4.2,
+           flux_ratio=2.0, could_explain_signal=True,
+           max_producible_depth_ppm=8000),
+    )
+    assert derive_verdict(d)[0] is Verdict.INTERESTING
+
+
+def test_the_brightest_culprit_is_the_one_named():
+    d = dossier_with(
+        ev(EvidenceKind.NEIGHBOUR, source="test", dilution=0.05),
         ev(EvidenceKind.NEIGHBOUR, identifier="weak", separation_arcsec=2.0,
-           could_explain_signal=True, max_producible_depth_ppm=400),
+           flux_ratio=11.0, could_explain_signal=True,
+           max_producible_depth_ppm=400),
         ev(EvidenceKind.NEIGHBOUR, identifier="strong", separation_arcsec=9.0,
-           could_explain_signal=True, max_producible_depth_ppm=9000),
+           flux_ratio=18.0, could_explain_signal=True,
+           max_producible_depth_ppm=9000),
     )
     assert "strong" in derive_verdict(d)[2]
 
 
-def test_incapable_neighbours_do_not_condemn():
-    d = dossier_with(ev(EvidenceKind.NEIGHBOUR, identifier="faint",
-                        could_explain_signal=False,
-                        max_producible_depth_ppm=50))
+def test_a_physically_implausible_corrected_depth_is_contamination():
+    d = dossier_with(
+        ev(EvidenceKind.DERIVED, source="dilution correction",
+           observed_depth_ppm=3000, corrected_depth_ppm=485_000, dilution=0.006),
+    )
+    verdict, _, why = derive_verdict(d)
+    assert verdict is Verdict.CONTAMINATED
+    assert "implausible" in why
+
+
+def test_a_modest_corrected_depth_is_not_contamination():
+    d = dossier_with(
+        ev(EvidenceKind.DERIVED, source="dilution correction",
+           observed_depth_ppm=300, corrected_depth_ppm=1200, dilution=0.25),
+    )
     assert derive_verdict(d)[0] is Verdict.INTERESTING
 
 

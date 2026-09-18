@@ -1399,3 +1399,115 @@ happens because a column needed adding.
 Verified live on 2026-09-18: 600/600 pinned rows matched, 0 blank; a full
 diff against the prior committed file confirmed every original column,
 including `disposition`, was byte-identical before and after.
+
+---
+
+## D-038 — The rule engine's contamination check requires positive evidence, not non-exclusion
+
+**Context.** D-030 fixed the same fallacy in the agent's prompt: reading
+`could_explain_signal: true` ("this neighbour cannot be excluded") as evidence
+of guilt, when nearly every neighbour clears that bar. The deterministic rule
+engine (`core/evidence.py`, rule 5 of `derive_verdict`) never received the
+equivalent fix. On the 54-signal rule baseline (`runs/rule_baseline.json`,
+9 signals per disposition), it returned `CONTAMINATED` for 30/54 signals,
+spanning every true class: 8/9 `INSTRUMENTAL`, 8/9 `FP`, 7/9 `INSUFFICIENT`,
+5/9 `INTERESTING`, 2/9 `KNOWN`. `INTERESTING` recall was 22.2% (2/9) - seven
+of nine signals worth an astronomer's attention were discarded as
+contamination on no more than "a neighbour could produce the depth if totally
+eclipsed."
+
+**Decision.** Rule 5 now requires one of two positive signals, mirroring the
+two conditions D-030 already put in the agent's prompt:
+
+  (a) the target holds a small share of the aperture flux
+      (`dilution < TARGET_FLUX_SHARE_FLOOR = 0.2`) *and* some neighbour
+      contributes at least `BRIGHT_NEIGHBOUR_FLUX_RATIO = 10.0` times the
+      target's own flux (~2.5 magnitudes brighter) - "much brighter", not
+      merely brighter;
+  (b) the dilution-corrected depth reaches
+      `MAX_PLAUSIBLE_PLANET_DEPTH_PPM = 100_000` ppm (10%) - the "tens of per
+      cent" boundary already stated in `core/agent.py`'s `SYSTEM_PROMPT`.
+      This is a coarse, stellar-radius-agnostic approximation, labelled as
+      such: the pipeline has no per-target stellar radius, so it cannot
+      compute an actual planet/star radius ratio, only a flux-based proxy for
+      it.
+
+A neighbour that merely is not excluded no longer triggers anything; that is
+now, correctly, the normal state of affairs (`INTERESTING` unless something
+else applies).
+
+**Measured on the same 54 signals (rule engine, `--from-run
+runs/rule_baseline.json`, live Gaia DR3 + NASA Exoplanet Archive queries,
+2026-09-18):**
+
+```
+class            P before   P after   R before   R after    n
+KNOWN              94.1%     94.1%     88.9%     88.9%     18
+INSTRUMENTAL         n/a       n/a      0.0%      0.0%      9
+FP                 26.7%      n/a     88.9%      0.0%      9
+INTERESTING         66.7%    21.2%     22.2%     77.8%      9
+INSUFFICIENT        25.0%    25.0%     11.1%     11.1%      9
+macro P/R/F1: 53.1%/42.2%/45.3% -> 46.8%/35.6%/46.7%
+```
+
+`INTERESTING` recall went from 22.2% to 77.8% (2/9 -> 7/9), which is the fix
+working as intended. `FP` recall fell from 88.9% to 0.0%: `CONTAMINATED` was
+not produced for any of the 54 signals.
+
+**Root cause of the `FP` collapse, verified against the raw evidence, not
+assumed.** It is not a threshold miscalibration. Dumping `dilution`,
+per-neighbour `flux_ratio` and `corrected_depth_ppm` for all 9 `FP` and all 9
+`PC` (-> `INTERESTING`) signals in the baseline sample showed:
+
+- 8 of the 9 `FP` signals have the target holding 63%-99.7% of the aperture
+  flux, with the strongest neighbour contributing 0.003x-0.38x of the
+  target's own flux. There is no dominant external contaminant to detect by
+  flux-ratio math: these are almost certainly *on-target* eclipsing binaries,
+  which is the `EXPLAINED` bucket the rule engine already cannot reach
+  (D-021: no odd/even-depth or secondary-eclipse check is implemented). The
+  old rule was never actually detecting these; it was marking them
+  `CONTAMINATED` purely on the D-030 non-exclusion fallacy, which also
+  over-triggered on every other class.
+- The one `FP` signal with a genuine contamination signature - `TOI-4858.01`:
+  target holds 5.8% of the aperture flux, corrected depth 1,204,032 ppm, top
+  neighbour 12.99x brighter - is intercepted earlier by the pre-existing
+  rule 4b ("any brighter neighbour -> `INSUFFICIENT`, identification
+  doubtful"), which fires on any brighter neighbour regardless of margin and
+  sits ahead of rule 5 in evaluation order. Rule 4b was not touched by this
+  decision; the interaction is noted here, not resolved.
+- **The ordering is inverted between a real `FP` and a real `PC` in this same
+  sample, which is why no single threshold on this criterion can do better:**
+
+  | signal | true class | dilution (target's flux share) | corrected depth | strongest neighbour flux ratio |
+  |---|---|---|---|---|
+  | `TOI-3164.01` | `FP` | 46.8% | 29,952 ppm | 0.384x (fainter than target) |
+  | `TOI-6625.01` | `PC` (`INTERESTING`) | 21.2% | 41,754 ppm | 1.338x (brighter than target) |
+
+  `TOI-6625.01`, a real planet candidate, is *more* diluted and has a
+  *higher* corrected depth than `TOI-3164.01`, a real false positive, and its
+  strongest neighbour is brighter rather than fainter. Any threshold on
+  `dilution`/`corrected_depth_ppm`/`flux_ratio` loose enough to catch
+  `TOI-3164.01` as contamination catches `TOI-6625.01` first, misclassifying
+  the exact class this decision was meant to protect. This was checked
+  directly against these two signals' actual numbers, not inferred.
+
+**Consequence, stated plainly rather than left to be found later.** `FP`
+recall on the rule-engine path is now 0%, and this decision does not recover
+it. That gap is the same one D-021 already declares: the rule engine has no
+mechanism to distinguish an on-target eclipsing binary from a genuine transit
+using only two-source aperture-flux ratios, because most `FP`s in this
+benchmark are not aperture contamination at all. Recovering `FP` recall needs
+an actual `EXPLAINED` check (odd/even transit-depth comparison, secondary-
+eclipse search) - out of scope here, and a separate decision when undertaken.
+Recalibrating `TARGET_FLUX_SHARE_FLOOR`, `BRIGHT_NEIGHBOUR_FLUX_RATIO` or
+`MAX_PLAUSIBLE_PLANET_DEPTH_PPM` will not fix it: the `TOI-3164.01` /
+`TOI-6625.01` pair above is a direct counter-example to any such attempt.
+
+**Status.** Active. Implemented in `core/evidence.py` (`derive_verdict`,
+rule 5). Covered by unit tests in `tests/unit/test_evidence.py`, including a
+regression test that a neighbour merely not excluded no longer produces
+`CONTAMINATED`. `runs/rule_baseline.json` (pre-change) and
+`runs/rule_D038_after.json` (post-change, same 54 signals via
+`scripts/11_rule_triage.py --from-run runs/rule_baseline.json`) are both
+committed, so the before/after comparison stays reproducible from the two
+files rather than only from this table.

@@ -12,6 +12,7 @@ from astro_hunter.domains.exoplanets.neighbours import (
     dilution,
     find_neighbours,
     flux_ratio,
+    implied_radius_rjup,
     max_depth_from_neighbour,
 )
 
@@ -86,6 +87,23 @@ def test_a_bright_neighbour_can_explain_a_shallow_transit():
     assert max_depth_from_neighbour(r, [r]) > 320e-6
 
 
+def test_implied_radius_of_a_sun_like_star_with_a_jupiter_depth():
+    """A ~1% depth on a Sun-like star is about one Jupiter radius - the
+    textbook case Rp = R* * sqrt(depth) is built to reproduce."""
+    assert implied_radius_rjup(1.0, 0.01) == pytest.approx(0.97311, rel=1e-3)
+
+
+def test_implied_radius_scales_with_stellar_radius():
+    assert implied_radius_rjup(2.0, 0.01) == pytest.approx(
+        2 * implied_radius_rjup(1.0, 0.01)
+    )
+
+
+def test_implied_radius_requires_a_positive_stellar_radius():
+    with pytest.raises(ValueError):
+        implied_radius_rjup(0.0, 0.01)
+
+
 # --- query --------------------------------------------------------------------
 
 def test_nearest_source_is_taken_as_the_target():
@@ -126,8 +144,9 @@ def test_unreachable_service_raises():
 
 # --- evidence -----------------------------------------------------------------
 
-def signal(depth_ppm=None):
-    return Signal(signal_id="X.01", source="test", depth_ppm=depth_ppm, **POS)
+def signal(depth_ppm=None, extra=None):
+    return Signal(signal_id="X.01", source="test", depth_ppm=depth_ppm,
+                  extra=extra or {}, **POS)
 
 
 def test_clean_aperture_reports_full_dilution():
@@ -153,6 +172,42 @@ def test_no_depth_means_no_correction_claimed():
             src(POS["ra_deg"] + 0.001, POS["dec_deg"], 10.0, "twin")]
     ev = crossmatch_neighbours(signal(), service=FakeService(rows))
     assert not [e for e in ev if e.kind is EvidenceKind.DERIVED]
+
+
+def test_implied_radius_is_emitted_when_a_stellar_radius_is_on_the_signal():
+    rows = [src(POS["ra_deg"], POS["dec_deg"], 10.0, "target")]
+    ev = crossmatch_neighbours(signal(depth_ppm=10_000, extra={"st_rad": 1.0}),
+                                service=FakeService(rows))
+    radius = [e for e in ev if "implied_radius_rjup" in e.payload]
+    assert len(radius) == 1
+    assert radius[0].payload["implied_radius_rjup"] == pytest.approx(
+        implied_radius_rjup(1.0, 0.01), abs=1e-3
+    )
+
+
+def test_implied_radius_uses_the_dilution_corrected_depth_not_the_raw_one():
+    """The whole point of D-039's first caution: skipping the correction would
+    understate the radius, exactly as it understates the depth."""
+    rows = [src(POS["ra_deg"], POS["dec_deg"], 10.0, "target"),
+            src(POS["ra_deg"] + 0.001, POS["dec_deg"], 10.0, "twin")]
+    ev = crossmatch_neighbours(signal(depth_ppm=10_000, extra={"st_rad": 1.0}),
+                                service=FakeService(rows))
+    radius = next(e for e in ev if "implied_radius_rjup" in e.payload)
+    # An equal-brightness twin halves the aperture flux from the target, so the
+    # corrected depth is double the observed one.
+    assert radius.payload["implied_radius_rjup"] == pytest.approx(
+        implied_radius_rjup(1.0, 0.02), abs=1e-3
+    )
+    assert radius.payload["implied_radius_rjup"] > implied_radius_rjup(1.0, 0.01)
+
+
+def test_no_stellar_radius_means_no_implied_radius_claimed():
+    """Absence of st_rad must not be read as absence of signal (D-039): the
+    calculation simply does not exist without a stellar radius, so no evidence
+    is produced for it - not a claim that the radius is small."""
+    rows = [src(POS["ra_deg"], POS["dec_deg"], 10.0, "target")]
+    ev = crossmatch_neighbours(signal(depth_ppm=10_000), service=FakeService(rows))
+    assert not [e for e in ev if "implied_radius_rjup" in e.payload]
 
 
 def test_faint_neighbour_is_reported_as_unable_to_explain():

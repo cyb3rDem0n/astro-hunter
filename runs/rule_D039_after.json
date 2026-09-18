@@ -1,0 +1,488 @@
+[
+  {
+    "signal_id": "TOI-7613.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "APC"
+  },
+  {
+    "signal_id": "TOI-5694.01",
+    "verdict": "insufficient",
+    "confidence": 0.6,
+    "reasoning": "1 source(s) in the aperture are brighter than the assumed target: the identification is unreliable",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "APC"
+  },
+  {
+    "signal_id": "TOI-3776.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "APC"
+  },
+  {
+    "signal_id": "TOI-1119.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "APC"
+  },
+  {
+    "signal_id": "TOI-311.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "APC"
+  },
+  {
+    "signal_id": "TOI-7115.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "APC"
+  },
+  {
+    "signal_id": "TOI-1531.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "APC"
+  },
+  {
+    "signal_id": "TOI-5307.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "APC"
+  },
+  {
+    "signal_id": "TOI-800.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "APC"
+  },
+  {
+    "signal_id": "TOI-4329.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "TOI-4329 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "CP"
+  },
+  {
+    "signal_id": "TOI-2524.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "TOI-2524 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "CP"
+  },
+  {
+    "signal_id": "TOI-519.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "TOI-519 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "CP"
+  },
+  {
+    "signal_id": "TOI-1248.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "TOI-1248 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "CP"
+  },
+  {
+    "signal_id": "TOI-3585.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "CP"
+  },
+  {
+    "signal_id": "TOI-1333.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "TOI-1333 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "CP"
+  },
+  {
+    "signal_id": "TOI-2285.01",
+    "verdict": "known",
+    "confidence": 0.85,
+    "reasoning": "TOI-2285 b is catalogued here; the search period is 2x its period, which a blind search commonly returns",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "CP"
+  },
+  {
+    "signal_id": "TOI-2384.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "TOI-2384 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "CP"
+  },
+  {
+    "signal_id": "TOI-791.02",
+    "verdict": "known",
+    "confidence": 0.85,
+    "reasoning": "TOI-791 c is catalogued here; the search period is 4x its period, which a blind search commonly returns",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "CP"
+  },
+  {
+    "signal_id": "TOI-3983.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FA"
+  },
+  {
+    "signal_id": "TOI-1275.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FA"
+  },
+  {
+    "signal_id": "TOI-634.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FA"
+  },
+  {
+    "signal_id": "TOI-692.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FA"
+  },
+  {
+    "signal_id": "TOI-3740.01",
+    "verdict": "explained",
+    "confidence": 0.7,
+    "reasoning": "implied radius of 3.12 R_Jup (stellar radius 1.22 R_sun and the dilution-corrected depth) exceeds the ~2 R_Jup ceiling for a planet: this is a stellar companion, not a planet",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FA"
+  },
+  {
+    "signal_id": "TOI-4112.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FA"
+  },
+  {
+    "signal_id": "TOI-6656.01",
+    "verdict": "insufficient",
+    "confidence": 0.6,
+    "reasoning": "1 source(s) in the aperture are brighter than the assumed target: the identification is unreliable",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FA"
+  },
+  {
+    "signal_id": "TOI-2078.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FA"
+  },
+  {
+    "signal_id": "TOI-3827.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FA"
+  },
+  {
+    "signal_id": "TOI-4367.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FP"
+  },
+  {
+    "signal_id": "TOI-6952.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FP"
+  },
+  {
+    "signal_id": "TOI-3164.01",
+    "verdict": "explained",
+    "confidence": 0.7,
+    "reasoning": "implied radius of 2.16 R_Jup (stellar radius 1.28 R_sun and the dilution-corrected depth) exceeds the ~2 R_Jup ceiling for a planet: this is a stellar companion, not a planet",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FP"
+  },
+  {
+    "signal_id": "TOI-4858.01",
+    "verdict": "insufficient",
+    "confidence": 0.6,
+    "reasoning": "2 source(s) in the aperture are brighter than the assumed target: the identification is unreliable",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FP"
+  },
+  {
+    "signal_id": "TOI-2168.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FP"
+  },
+  {
+    "signal_id": "TOI-3712.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FP"
+  },
+  {
+    "signal_id": "TOI-1770.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FP"
+  },
+  {
+    "signal_id": "TOI-1578.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FP"
+  },
+  {
+    "signal_id": "TOI-914.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FP"
+  },
+  {
+    "signal_id": "TOI-5528.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "K2-117 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "KP"
+  },
+  {
+    "signal_id": "TOI-2129.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "HAT-P-14 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "KP"
+  },
+  {
+    "signal_id": "TOI-751.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "HATS-22 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "KP"
+  },
+  {
+    "signal_id": "TOI-1068.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "HATS-28 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "KP"
+  },
+  {
+    "signal_id": "TOI-5984.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "Kepler-495 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "KP"
+  },
+  {
+    "signal_id": "TOI-7856.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "Kepler-1520 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "KP"
+  },
+  {
+    "signal_id": "TOI-7903.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "KP"
+  },
+  {
+    "signal_id": "TOI-1144.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "HAT-P-11 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "KP"
+  },
+  {
+    "signal_id": "TOI-5384.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "KELT-4 A b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "KP"
+  },
+  {
+    "signal_id": "TOI-2561.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "PC"
+  },
+  {
+    "signal_id": "TOI-5754.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "PC"
+  },
+  {
+    "signal_id": "TOI-6323.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "PC"
+  },
+  {
+    "signal_id": "TOI-7577.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "PC"
+  },
+  {
+    "signal_id": "TOI-5656.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "PC"
+  },
+  {
+    "signal_id": "TOI-7223.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "PC"
+  },
+  {
+    "signal_id": "TOI-5294.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "PC"
+  },
+  {
+    "signal_id": "TOI-6625.01",
+    "verdict": "insufficient",
+    "confidence": 0.6,
+    "reasoning": "1 source(s) in the aperture are brighter than the assumed target: the identification is unreliable",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "PC"
+  },
+  {
+    "signal_id": "TOI-5605.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "TOI-5605 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "PC"
+  }
+]

@@ -173,6 +173,55 @@ def test_the_brightest_culprit_is_the_one_named():
     assert "strong" in derive_verdict(d)[2]
 
 
+def test_an_implied_radius_above_the_ceiling_is_explained_not_contaminated():
+    """D-039: a real stellar radius makes this a grounded planet/star radius
+    test, and the answer it gives - a stellar companion on the target - is
+    EXPLAINED, not CONTAMINATED (which means a neighbour, not the target)."""
+    d = dossier_with(
+        ev(EvidenceKind.DERIVED, source="implied radius",
+           st_rad_rsun=1.0, implied_radius_rjup=4.5),
+    )
+    verdict, confidence, why = derive_verdict(d)
+    assert verdict is Verdict.EXPLAINED
+    assert confidence == pytest.approx(0.7)
+    assert "4.5" in why and "stellar companion" in why
+
+
+def test_an_implied_radius_below_the_ceiling_is_not_explained():
+    d = dossier_with(
+        ev(EvidenceKind.DERIVED, source="implied radius",
+           st_rad_rsun=1.0, implied_radius_rjup=1.1),
+    )
+    assert derive_verdict(d)[0] is not Verdict.EXPLAINED
+
+
+def test_implied_radius_takes_priority_over_the_ppm_proxy_when_both_are_present():
+    """5b supersedes 5c (D-039): once a real stellar radius is available, the
+    coarse ppm-only proxy must not override what the actual physics says."""
+    d = dossier_with(
+        ev(EvidenceKind.DERIVED, source="dilution correction",
+           corrected_depth_ppm=200_000, dilution=0.5),
+        ev(EvidenceKind.DERIVED, source="implied radius",
+           st_rad_rsun=0.2, implied_radius_rjup=0.8),
+    )
+    verdict, _, _ = derive_verdict(d)
+    assert verdict is not Verdict.CONTAMINATED
+
+
+def test_missing_stellar_radius_falls_back_to_the_ppm_proxy_unaffected():
+    """No st_rad on the signal means no implied-radius evidence at all (per
+    neighbours.crossmatch_neighbours): rule 5c must still fire exactly as it
+    did before D-039 - absence of the input produces no verdict of its own,
+    it just leaves the older rule in charge."""
+    d = dossier_with(
+        ev(EvidenceKind.DERIVED, source="dilution correction",
+           observed_depth_ppm=3000, corrected_depth_ppm=485_000, dilution=0.006),
+    )
+    verdict, _, why = derive_verdict(d)
+    assert verdict is Verdict.CONTAMINATED
+    assert "implausible" in why
+
+
 def test_a_physically_implausible_corrected_depth_is_contamination():
     d = dossier_with(
         ev(EvidenceKind.DERIVED, source="dilution correction",

@@ -40,10 +40,12 @@ different software, and a claim's source is not an implementation detail.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 import astropy.units as u
+from astropy import constants as const
 from astropy.coordinates import SkyCoord
 
 from astro_hunter.core.adql import cone_predicate
@@ -164,6 +166,32 @@ def max_depth_from_neighbour(ratio: float, all_ratios: list[float]) -> float:
     than an estimate.
     """
     return ratio / (1.0 + sum(all_ratios))
+
+
+# R_sun / R_jup (IAU nominal, equatorial): converts a radius expressed in
+# solar radii into Jupiter radii.
+_RSUN_IN_RJUP = float((const.R_sun / const.R_jup).decompose())
+
+
+def implied_radius_rjup(st_rad_rsun: float, corrected_depth_fraction: float) -> float:
+    """Radius of the eclipsing object implied by Rp = R* x sqrt(depth), in R_Jup.
+
+    ``corrected_depth_fraction`` must already be corrected for dilution (see
+    ``corrected_depth``): contaminating flux fills in the observed dip, so an
+    uncorrected depth systematically understates the true radius on the
+    target - the same reason a planet radius computed from a raw depth is too
+    small.
+
+    This is the geometric approximation Rp = R* * sqrt(depth): it assumes a
+    central transit and ignores limb darkening, and is precise enough only to
+    place the eclipsing body's radius on the right side of the planet/star
+    boundary, not to characterize a confirmed planet.
+    """
+    if st_rad_rsun <= 0:
+        raise ValueError(f"stellar radius must be positive, got {st_rad_rsun}")
+    if corrected_depth_fraction < 0:
+        raise ValueError(f"depth must be non-negative, got {corrected_depth_fraction}")
+    return st_rad_rsun * math.sqrt(corrected_depth_fraction) * _RSUN_IN_RJUP
 
 
 def _select_adql(table: str, ra_deg: float, dec_deg: float, radius_arcsec: float) -> str:
@@ -358,6 +386,27 @@ def crossmatch_neighbours(
                 "dilution": round(d, 5),
             },
         ))
+
+        # Implied radius (D-039). Only emitted when a stellar radius is on the
+        # signal: without one, Rp = R* * sqrt(depth) has no R* to multiply, and
+        # a missing input must not be read as "radius is fine" - it must simply
+        # produce no claim, leaving the verdict to whatever else applies.
+        st_rad = signal.extra.get("st_rad")
+        if st_rad is not None:
+            radius_rjup = implied_radius_rjup(st_rad, corrected_depth(observed, ratios))
+            evidence.append(Evidence(
+                kind=EvidenceKind.DERIVED,
+                source=f"implied radius (R* x sqrt(dilution-corrected depth), {gaia_source})",
+                summary=(
+                    f"stellar radius {st_rad:g} R_sun and the dilution-corrected depth "
+                    f"imply an eclipsing body of {radius_rjup:.2f} R_Jup"
+                ),
+                retrieved_at=retrieved,
+                payload={
+                    "st_rad_rsun": st_rad,
+                    "implied_radius_rjup": round(radius_rjup, 4),
+                },
+            ))
 
         for n in neighbours:
             capacity = max_depth_from_neighbour(n["flux_ratio"], ratios)

@@ -21,9 +21,12 @@ or an agent that ran out of iterations says nothing about judgement quality.
 Those runs are pulled out before scoring and tallied by `stop_reason`.
 
 **Known ceiling, stated rather than left to be inferred from the matrix.**
-The rule engine cannot produce `EXPLAINED` (D-021): distinguishing an
-on-target eclipsing binary from a nearby one needs odd/even depth and a
-secondary-eclipse search, neither implemented. And *neither* path can
+The rule engine's only route to `EXPLAINED` is the implied-radius check
+(D-039): a stellar radius on the signal and a dilution-corrected depth large
+enough to imply an eclipsing body above ~2 R_Jup. It has no odd/even-depth or
+secondary-eclipse check (D-021), so an on-target eclipsing binary whose
+implied radius does not clear that ceiling - most of them, per D-039's
+measurement - is invisible to it by any route. And *neither* path can
 produce a grounded `INSTRUMENTAL` verdict here: the TOI queue carries no
 light curve, so neither the rule engine nor the agent is given an
 instrumental check (D-035) - same reason `scripts/11_rule_triage.py` wires
@@ -269,8 +272,10 @@ def format_report(report: ComparisonReport) -> str:
         "=" * 78,
         "",
         "Known ceiling - declared here, not left to be found in the matrix:",
-        "  - EXPLAINED is unreachable by the rule path (D-021): the rules never",
-        "    compare odd/even depth or search for a secondary eclipse.",
+        "  - EXPLAINED is reachable by the rule path only via implied radius",
+        "    (D-039, needs a stellar radius); it has no odd/even-depth or",
+        "    secondary-eclipse check, so most on-target eclipsing binaries",
+        "    still escape it.",
         "  - INSTRUMENTAL/FA is unreachable by BOTH paths (D-035): the TOI queue",
         "    carries no light curve, so neither path is given an instrumental",
         "    check. A predicted INSTRUMENTAL from either side is not grounded.",

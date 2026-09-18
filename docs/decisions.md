@@ -1511,3 +1511,143 @@ regression test that a neighbour merely not excluded no longer produces
 `scripts/11_rule_triage.py --from-run runs/rule_baseline.json`) are both
 committed, so the before/after comparison stays reproducible from the two
 files rather than only from this table.
+
+---
+
+## D-039 — An implied-radius check gives the rule engine its first real path to `EXPLAINED`
+
+**Context.** D-038 fixed the non-exclusion fallacy but stated plainly that it
+could not recover `FP` recall: most true `FP`s in the benchmark are on-target
+eclipsing binaries, and distinguishing those from a genuine transit needs
+something the rule engine did not have (D-021) - odd/even depth, a secondary
+eclipse, or an actual stellar radius to turn the dilution-corrected depth into
+a physical size instead of a ppm proxy. `st_rad` became available on
+`Signal.extra` in D-037, which makes the third option implementable.
+
+**Decision.** A new derived quantity, `Rp = R* * sqrt(depth)` - the standard
+geometric transit-depth relation, on the *dilution-corrected* depth, not the
+observed one, since an uncorrected depth systematically understates the
+radius the same way it understates the depth itself (D-038's own reasoning
+about a planet radius derived from a raw depth). Above
+`MAX_PLAUSIBLE_PLANET_RADIUS_RJUP = 2.0` R_Jup, the eclipsing body is not a
+planet: giant planets and old brown dwarfs cluster near 1 R_Jup (electron
+degeneracy pressure caps their radius regardless of mass), so an object this
+large is a low-mass star or young/hot brown-dwarf companion - real, on the
+target, just not what the survey is looking for, which is exactly `EXPLAINED`
+rather than `CONTAMINATED` (a *neighbour's* light, not the target's).
+
+Implementation is split the same way as every other derived quantity here:
+`neighbours.implied_radius_rjup` is the pure calculation, and
+`crossmatch_neighbours` emits it as `Evidence` (`implied_radius_rjup`,
+`st_rad_rsun`) only when `signal.extra["st_rad"]` is present. The threshold
+itself lives in `core/evidence.py` alongside the other verdict-rule constants
+(D-038's `TARGET_FLUX_SHARE_FLOOR` etc.), as rule 5b, ordered:
+
+  - 5a (D-038, unchanged): a bright neighbour dominates the aperture ->
+    `CONTAMINATED`.
+  - **5b (new): a stellar radius is on the signal and the implied radius
+    reaches the ceiling -> `EXPLAINED`.**
+  - 5c (D-038's old rule 5, unchanged code, now reached only when 5b did not
+    fire): no stellar radius, so fall back to the coarse
+    `MAX_PLAUSIBLE_PLANET_DEPTH_PPM` ppm proxy -> `CONTAMINATED`.
+
+**Two things this rule must get right, both enforced by tests.**
+
+1. **Depth correction has to happen before the radius calculation, not after.**
+   `crossmatch_neighbours` passes `corrected_depth(observed, ratios)` into
+   `implied_radius_rjup`, never the raw `signal.depth_ppm`. Skipping the
+   correction would silently reintroduce the exact understatement D-038 (in
+   `corrected_depth`'s own docstring) already names as the reason a
+   raw-depth planet radius is wrong. Regression test:
+   `test_implied_radius_uses_the_dilution_corrected_depth_not_the_raw_one`.
+2. **A row without `st_rad` must not produce a verdict from this rule at
+   all** - absence of the stellar radius is not evidence of a small radius,
+   it is absence of the input the calculation needs to exist. `st_rad is
+   None` skips emitting the evidence entirely (`crossmatch_neighbours`), and
+   rule 5b in `derive_verdict` is a no-op when that evidence is absent -
+   control falls through to 5c exactly as it did before this decision, never
+   to a verdict manufactured from missing data. Regression tests:
+   `test_no_stellar_radius_means_no_implied_radius_claimed`,
+   `test_missing_stellar_radius_falls_back_to_the_ppm_proxy_unaffected`.
+
+**Measured on the same 54 signals** (rule engine, `--from-run
+runs/rule_baseline.json`, live Gaia DR3 + NASA Exoplanet Archive queries,
+2026-09-18), comparing against `runs/rule_D038_after.json` - the state
+immediately before this change, not the pre-D-038 baseline:
+
+```
+class            P before   P after   R before   R after    n
+KNOWN              94.1%     94.1%     88.9%     88.9%     18
+INSTRUMENTAL         n/a       n/a      0.0%      0.0%      9
+FP                   n/a     50.0%      0.0%     11.1%      9
+INTERESTING        21.2%     22.6%     77.8%     77.8%      9
+INSUFFICIENT       25.0%     25.0%     11.1%     11.1%      9
+macro P/R/F1: 46.8%/35.6%/46.7% -> 47.9%/37.8%/40.0%
+```
+
+Exactly two of the 54 verdicts changed, both from `interesting` to
+`explained`:
+
+  - `TOI-3164.01` (true `FP`): stellar radius 1.28 R_sun, implied radius
+    2.16 R_Jup - the same signal named in D-038 as a genuine contamination
+    signature that no flux-ratio threshold could catch without also catching
+    `TOI-6625.01`, a real `PC`. The radius check succeeds precisely where the
+    flux-ratio approach was shown to be unfixable, because it asks a
+    different, more specific question (how big is the object on the target)
+    instead of a proxy for it.
+  - `TOI-3740.01` (true `FA`, i.e. `INSTRUMENTAL`): stellar radius 1.22
+    R_sun, implied radius 3.12 R_Jup. Also a real large-radius eclipsing
+    object, but its true class is `INSTRUMENTAL`/`FA`, which this rule was
+    never meant to detect and does not claim to - `EXPLAINED` is not the
+    accepted verdict for that class, so this is neither a win nor a new
+    failure mode specific to this change: the signal was already
+    misclassified (as `interesting`) before it, and remains misclassified
+    (as `explained`) after.
+
+`FP` recall recovered from 0.0% to 11.1% (1/9) without moving `INTERESTING`
+recall at all (77.8% -> 77.8%, same 7/9 signals) - the property this decision
+was checked against before being accepted, since a check that traded
+`INTERESTING` signals for `FP` recall would not be worth having. `FP`
+precision also went from undefined (zero predictions) to 50%, though `n=9`
+per class makes both numbers move in large, noisy steps (1/9 is worth 11.1
+percentage points of recall by itself).
+
+**Why macro F1 is lower after this change despite two metrics improving
+and none regressing**, stated plainly rather than left to look like a
+regression: `_macro` averages only classes with a defined F1, and `FP`'s F1
+was undefined before this change (zero predictions in the accepted set) and
+is now defined at 18.2% - low in absolute terms, but its arrival, not a
+decline anywhere else, pulls the four-class average down from three defined
+values (91.4%, 33.3%, 15.4%) to four (91.4%, 18.2%, 35.0%, 15.4%). No
+individual class's F1 fell: `KNOWN` and `INSUFFICIENT` are unchanged,
+`INTERESTING`'s rose slightly (33.3% -> 35.0%), and `FP`'s went from "not
+computable" to "computable and low" - progress on a metric that reported
+nothing at all beforehand, not regression on one that reported something
+better.
+
+**51 of the 54 signals carry `st_rad`**; the 3 that do not (1 `APC`, 1 `FA`,
+1 `PC`) fall through to the unchanged 5c ppm proxy exactly as before this
+decision - the sample was not large enough, on either side, to say anything
+about how often that fallback still fires correctly, only that it still runs
+when it must.
+
+**Consequence, stated plainly.** `FP` recall is still far from complete
+(11.1%): most true `FP`s in this sample are on-target binaries whose implied
+radius, given their actual `st_rad`, does not clear the 2 R_Jup ceiling -
+they need the odd/even-depth or secondary-eclipse check D-021 and D-038
+already named as out of scope here, not a lower radius threshold. Lowering
+`MAX_PLAUSIBLE_PLANET_RADIUS_RJUP` was not tried as a fix: the physical
+argument for ~2 R_Jup (the giant-planet/brown-dwarf radius ceiling) does not
+become weaker for not fully solving `FP` recall, and chasing recall by
+loosening a physically motivated threshold risks the same failure mode D-038
+already documented for the ppm proxy - condemning a real, smaller planet on
+a small star.
+
+**Status.** Active. Implemented in `domains/exoplanets/neighbours.py`
+(`implied_radius_rjup`, and its `Evidence` emission in
+`crossmatch_neighbours`) and `core/evidence.py` (`derive_verdict`, rule 5b).
+Covered by unit tests in `tests/unit/test_neighbours.py` and
+`tests/unit/test_evidence.py`. `runs/rule_D039_after.json` (post-change, same
+54 signals via `scripts/11_rule_triage.py --from-run runs/rule_baseline.json`)
+is committed alongside `runs/rule_D038_after.json`, so this comparison stays
+reproducible from the two files rather than only from this table.

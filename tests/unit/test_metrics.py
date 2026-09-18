@@ -191,11 +191,11 @@ def test_record_from_dict_handles_a_null_verdict():
 
 
 def test_the_declared_ceiling_is_stated_explicitly_in_the_report():
-    """D-021/D-035: this must be readable as a stated fact, not something the
-    reader has to infer from an empty matrix cell."""
+    """D-021/D-035/D-039: this must be readable as a stated fact, not something
+    the reader has to infer from an empty matrix cell."""
     report = compare([], [])
     text = format_report(report)
-    assert "EXPLAINED is unreachable by the rule path" in text
+    assert "EXPLAINED is reachable by the rule path only via implied radius" in text
     assert "INSTRUMENTAL/FA is unreachable by BOTH paths" in text
 
 

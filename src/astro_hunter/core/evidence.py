@@ -55,10 +55,21 @@ BRIGHT_NEIGHBOUR_FLUX_RATIO = 10.0
 # longer plausibly a planet rather than a stellar/brown-dwarf companion: the
 # same "tens of per cent" boundary already stated in the agent's prompt
 # (core/agent.py SYSTEM_PROMPT, D-030). This is a coarse, stellar-radius-
-# agnostic approximation - the pipeline has no per-target stellar radius to
-# compute an actual planet/star radius ratio - labelled as such rather than
-# presented as a physical model.
+# agnostic approximation - it exists only for signals without a stellar
+# radius on them, in which case the actual physical calculation below (D-039)
+# cannot be made - labelled as such rather than presented as a physical model.
 MAX_PLAUSIBLE_PLANET_DEPTH_PPM = 100_000.0
+
+# --- implied-radius threshold (D-039) ------------------------------------------
+#
+# Rp = R* * sqrt(depth), on the dilution-corrected depth. Above roughly two
+# Jupiter radii the eclipsing object is not a planet: giant planets and old
+# brown dwarfs cluster near 1 R_Jup (electron-degeneracy pressure caps their
+# radius regardless of mass), so an object this large is a low-mass star or
+# young/hot brown-dwarf companion. This is the actual physical quantity the
+# coarse `MAX_PLAUSIBLE_PLANET_DEPTH_PPM` proxy above could only approximate
+# without a stellar radius.
+MAX_PLAUSIBLE_PLANET_RADIUS_RJUP = 2.0
 
 
 def _failure(name: str, exc: Exception) -> Evidence:
@@ -186,17 +197,38 @@ def derive_verdict(dossier: Dossier) -> tuple[Verdict, float, str]:
                 f"aperture flux, and {worst.identifier} at {worst.separation_arcsec:g} "
                 f"arcsec is {worst.payload['flux_ratio']:.1f}x brighter than it"))
 
-    depth_evidence = next(
+    # 5b. Implied radius from a stellar radius and the dilution-corrected depth
+    # (D-039). Grounded whenever a stellar radius is on the signal, which is
+    # exactly when the coarse ppm-only proxy in 5c is not needed: an actual
+    # Rp = R* * sqrt(depth) supersedes an approximation of the same physical
+    # question. A signal without a stellar radius produces no evidence here
+    # (neighbours.crossmatch_neighbours) - absence of that input is not read
+    # as a small radius, it simply leaves this rule silent and falls through.
+    radius_evidence = next(
         (e for e in dossier.of_kind(EvidenceKind.DERIVED)
-         if "corrected_depth_ppm" in e.payload), None
+         if "implied_radius_rjup" in e.payload), None
     )
-    if depth_evidence and (
-        depth_evidence.payload["corrected_depth_ppm"] >= MAX_PLAUSIBLE_PLANET_DEPTH_PPM
-    ):
-        return (Verdict.CONTAMINATED, 0.6, (
-            f"dilution-corrected depth of "
-            f"{depth_evidence.payload['corrected_depth_ppm']:.0f} ppm is physically "
-            f"implausible for a planet"))
+    if radius_evidence:
+        if radius_evidence.payload["implied_radius_rjup"] >= MAX_PLAUSIBLE_PLANET_RADIUS_RJUP:
+            return (Verdict.EXPLAINED, 0.7, (
+                f"implied radius of {radius_evidence.payload['implied_radius_rjup']:.2f} "
+                f"R_Jup (stellar radius {radius_evidence.payload['st_rad_rsun']:g} R_sun "
+                f"and the dilution-corrected depth) exceeds the "
+                f"~{MAX_PLAUSIBLE_PLANET_RADIUS_RJUP:g} R_Jup ceiling for a planet: this "
+                f"is a stellar companion, not a planet"))
+    else:
+        # 5c. No stellar radius: the coarse, radius-agnostic ppm proxy (D-038).
+        depth_evidence = next(
+            (e for e in dossier.of_kind(EvidenceKind.DERIVED)
+             if "corrected_depth_ppm" in e.payload), None
+        )
+        if depth_evidence and (
+            depth_evidence.payload["corrected_depth_ppm"] >= MAX_PLAUSIBLE_PLANET_DEPTH_PPM
+        ):
+            return (Verdict.CONTAMINATED, 0.6, (
+                f"dilution-corrected depth of "
+                f"{depth_evidence.payload['corrected_depth_ppm']:.0f} ppm is physically "
+                f"implausible for a planet"))
 
     # 6. A catalogued host, but this signal is not its known planet.
     unrelated = [

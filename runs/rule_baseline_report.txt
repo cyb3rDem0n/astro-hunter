@@ -1,0 +1,36 @@
+==============================================================================
+  RULE ENGINE BASELINE  (D-013/D-021), pre-change snapshot
+==============================================================================
+
+Run: rule_baseline.json  (54 signals, 9 per disposition x 6 classes = 54)
+Checks: confirmed_planets (NASA Exoplanet Archive), aperture_neighbours (Gaia DR3)
+
+Known ceiling, declared (D-021, D-035):
+  - EXPLAINED is unreachable by the rule engine: no odd/even depth or
+    secondary-eclipse check is implemented.
+  - INSTRUMENTAL/FA is unreachable: the TOI queue carries no light curve,
+    so no instrumental check runs. Any INSTRUMENTAL verdict below would
+    not be grounded - none was produced in this run.
+
+Majority-class baseline (D-015, pinned catalog proportions): 59.5%
+  (always predicting INTERESTING)
+Raw accuracy is not reported as a headline metric (D-015).
+
+class               P       R      F1    n
+------------------------------------------
+KNOWN           94.1%   88.9%   91.4%   18
+INSTRUMENTAL      n/a    0.0%     n/a    9
+FP              26.7%   88.9%   41.0%    9
+INTERESTING     66.7%   22.2%   33.3%    9
+INSUFFICIENT    25.0%   11.1%   15.4%    9
+------------------------------------------
+macro avg       53.1%   42.2%   45.3%   54
+
+Confusion matrix (true class -> predicted verdict counts):
+  KNOWN         known=16, contaminated=2
+  INSTRUMENTAL  contaminated=8, insufficient=1
+  FP            contaminated=8, insufficient=1
+  INTERESTING   contaminated=5, interesting=2, insufficient=1, known=1
+  INSUFFICIENT  contaminated=7, insufficient=1, interesting=1
+
+scored: 54, excluded (unlabelled disposition): 0, no verdict: 0

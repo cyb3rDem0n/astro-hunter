@@ -9,6 +9,7 @@ from astro_hunter.sources.toi import (
     BTJD_OFFSET,
     DISPOSITION_COLUMN,
     QueueUnavailable,
+    enrich_extra_columns,
     fetch_triage_queue,
     load_benchmark,
     signal_from_row,
@@ -46,7 +47,8 @@ class FakeService:
 def row(**kw):
     base = {"toi": 144.01, "tid": 261136679, "ra": 84.29928, "dec": -80.464604,
             "pl_orbper": 6.2678139, "pl_tranmid": 2458325.5, "pl_trandep": 321.0,
-            "pl_trandurh": 2.789}
+            "pl_trandurh": 2.789, "st_rad": 1.15, "st_teff": 5950.0,
+            "st_logg": 4.438, "pl_rade": 1.99779}
     base.update(kw)
     return base
 
@@ -79,6 +81,23 @@ def test_missing_values_become_none_not_nan():
 def test_a_row_without_an_epoch_has_no_epoch():
     s = signal_from_row(row(pl_tranmid=None))
     assert s.epoch is None
+
+
+def test_stellar_and_planet_parameters_land_in_extra():
+    """st_rad, st_teff, st_logg, pl_rade cost nothing extra (same row) and are
+    exoplanet-specific, so they go in Signal.extra rather than as named Signal
+    fields - Signal stays domain-agnostic (D-012)."""
+    s = signal_from_row(row())
+    assert s.extra["st_rad"] == pytest.approx(1.15)
+    assert s.extra["st_teff"] == pytest.approx(5950.0)
+    assert s.extra["st_logg"] == pytest.approx(4.438)
+    assert s.extra["pl_rade"] == pytest.approx(1.99779)
+
+
+def test_missing_stellar_parameters_become_none_in_extra():
+    s = signal_from_row(row(st_rad=None, pl_rade=float("nan")))
+    assert s.extra["st_rad"] is None
+    assert s.extra["pl_rade"] is None
 
 
 def test_a_row_without_a_position_is_rejected():
@@ -141,6 +160,15 @@ def test_epoch_survives_the_round_trip(tmp_path):
     write_benchmark([(original, "CP")], path)
     restored, _ = load_benchmark(path)[0]
     assert restored.epoch == pytest.approx(original.epoch)
+
+
+def test_stellar_and_planet_parameters_survive_the_round_trip(tmp_path):
+    path = tmp_path / "bench.csv"
+    original = signal_from_row(row())
+    write_benchmark([(original, "CP")], path)
+    restored, _ = load_benchmark(path)[0]
+    for key in ("st_rad", "st_teff", "st_logg", "pl_rade"):
+        assert restored.extra[key] == pytest.approx(original.extra[key])
 
 
 def test_the_sample_is_stratified(monkeypatch):
@@ -207,3 +235,53 @@ def test_a_masked_row_value_is_handled_in_signal_from_row():
     r = row(pl_orbper=ma.array([1.0], mask=[True])[0])
     s = signal_from_row(r)
     assert s.period_days is None
+
+
+# --- in-place enrichment (D-037) -----------------------------------------------
+
+def test_enrichment_fills_new_columns_without_touching_the_rest(tmp_path):
+    """The pinned sample and its dispositions must survive untouched - only the
+    four new columns are added."""
+    path = tmp_path / "bench.csv"
+    write_benchmark([(signal_from_row(row(toi=144.01)), "CP")], path)
+
+    stats = enrich_extra_columns(path, service=FakeService([row(toi=144.01)]))
+
+    assert stats == {"total": 1, "matched": 1, "unmatched": 0}
+    signal, label = load_benchmark(path)[0]
+    assert label == "CP"
+    assert signal.signal_id == "TOI-144.01"
+    assert signal.extra["st_rad"] == pytest.approx(1.15)
+    assert signal.extra["pl_rade"] == pytest.approx(1.99779)
+
+
+def test_enrichment_leaves_a_vanished_signal_blank_not_dropped(tmp_path):
+    """A signal_id no longer in the live catalog keeps its row - a row with a
+    blank column is still comparable to what past runs scored; a removed row
+    is not."""
+    path = tmp_path / "bench.csv"
+    write_benchmark(
+        [(signal_from_row(row(toi=144.01)), "CP"),
+         (signal_from_row(row(toi=999.01)), "PC")],
+        path,
+    )
+
+    stats = enrich_extra_columns(path, service=FakeService([row(toi=144.01)]))
+
+    assert stats == {"total": 2, "matched": 1, "unmatched": 1}
+    loaded = {s.signal_id: (s, label) for s, label in load_benchmark(path)}
+    assert loaded["TOI-144.01"][0].extra["st_rad"] == pytest.approx(1.15)
+    assert loaded["TOI-999.01"][0].extra["st_rad"] is None
+    assert loaded["TOI-999.01"][1] == "PC"  # disposition untouched, row not dropped
+
+
+def test_enrichment_never_queries_or_writes_a_disposition_column(tmp_path):
+    path = tmp_path / "bench.csv"
+    write_benchmark([(signal_from_row(row(toi=144.01)), "CP")], path)
+    service = FakeService([row(toi=144.01)])
+
+    enrich_extra_columns(path, service=service)
+
+    assert DISPOSITION_COLUMN not in service.last_query
+    _signal, label = load_benchmark(path)[0]
+    assert label == "CP"

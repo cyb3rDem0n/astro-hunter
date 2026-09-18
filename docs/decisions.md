@@ -1335,3 +1335,67 @@ demonstration of it.
 **Status.** Active. Implemented in `neighbours.py` and `mcp/server.py`.
 `catalogs.py` (NASA Exoplanet Archive) is untouched - this was scoped to
 Gaia only.
+
+---
+
+## D-037 — Extra columns are added to the pinned benchmark in place, never by regenerating it
+
+**Decision.** `st_rad`, `st_teff`, `st_logg` and `pl_rade` were added to
+`sources.toi.SIGNAL_COLUMNS` - stellar/planet parameters already computed by
+the TFOPWG pipeline that produces the `toi` table, so reading them costs no
+extra query. They land in `Signal.extra`, not as new named `Signal` fields:
+`Signal` is domain-agnostic by construction (D-012) and these names are
+exoplanet-specific.
+
+Getting them into the already-pinned `tests/fixtures/toi_benchmark.csv`
+(600 rows, D-015/D-025) is the part that needed a decision.
+
+**Rejected: re-run `fetch_benchmark_sample` with the original seed.** Tried
+first, on the reasoning that D-025 calls the sample "reproducible from the
+seed". It is not, against a catalog that has moved on. `fetch_benchmark_sample`
+selects by *position* in each disposition's row list -
+`random.Random(seed).sample(rows_for_label, ...)`. The TOI catalog is live and
+its per-class row lists change as follow-up accumulates (D-015's own stated
+reason for pinning in the first place): new TOIs are added, and existing ones
+get reclassified between dispositions. Re-running with the identical seed
+against today's catalog reproduced 600 signals, but only about 20% of them
+were the same `signal_id`s as the pinned file - confirmed by running the same
+seeded query twice back-to-back in one session (byte-identical both times, so
+not a within-session ordering artifact) and then diffing against the git-committed
+file, which was built earlier. The seed pins the *procedure*, not the *output*,
+once the input list it walks has changed shape.
+
+Regenerating would therefore have changed two things silently, not one: which
+600 signals are in the sample, *and* - for whichever old signals happened to
+survive by chance - potentially their disposition too, since dispositions are
+exactly what D-015 says gets revised over time. Either alone would break
+comparability with a prior run; both together, as an unannounced side effect
+of "add four columns", is the failure this decision exists to prevent.
+
+**Decision: `sources.toi.enrich_extra_columns` edits the pinned file in place.**
+It queries the live catalog once for the four new columns, matches the result
+back to the file by `signal_id` - built the same way `signal_from_row` builds
+it (`TOI-{toi}`) - and rewrites only those columns. It never touches
+`disposition`, never re-samples, and the disposition column is not even
+included in its query (mirroring D-016's triage-query discipline, though the
+reason here is "don't touch it," not "don't leak it").
+
+**A signal_id missing from the live catalog is left blank, not dropped.** A
+row that lost a column is still the same pinned signal with the same
+disposition - comparable to whatever a past run scored against it. A dropped
+row is not comparable to anything; it is a silent shrinking of the pinned set,
+which is exactly what this decision exists to avoid. (In practice, running
+this against the live catalog on 2026-09-18 matched all 600 rows - none were
+missing.)
+
+**The pinned sample stays a deliberate, dated artifact (D-025).** A genuine
+refresh - a new stratified sample, accepting that both membership and
+dispositions may shift - remains possible and is sometimes the right call, but
+it is its own decision, committed with its own date, not something that
+happens because a column needed adding.
+
+**Status.** Active. Implemented in `sources/toi.py`
+(`enrich_extra_columns`), run via `scripts/01_enrich_toi_extra_columns.py`.
+Verified live on 2026-09-18: 600/600 pinned rows matched, 0 blank; a full
+diff against the prior committed file confirmed every original column,
+including `disposition`, was byte-identical before and after.

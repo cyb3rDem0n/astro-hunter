@@ -1,0 +1,488 @@
+[
+  {
+    "signal_id": "TOI-7613.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 5721911184427817472 at 39.14 arcsec could produce up to 202059 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "APC"
+  },
+  {
+    "signal_id": "TOI-5694.01",
+    "verdict": "insufficient",
+    "confidence": 0.6,
+    "reasoning": "1 source(s) in the aperture are brighter than the assumed target: the identification is unreliable",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "APC"
+  },
+  {
+    "signal_id": "TOI-3776.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 937793365915544960 at 24.133 arcsec could produce up to 371334 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "APC"
+  },
+  {
+    "signal_id": "TOI-1119.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 6660655765339344896 at 29.751 arcsec could produce up to 11945 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "APC"
+  },
+  {
+    "signal_id": "TOI-311.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "APC"
+  },
+  {
+    "signal_id": "TOI-7115.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 2002411889118090496 at 33.237 arcsec could produce up to 181720 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "APC"
+  },
+  {
+    "signal_id": "TOI-1531.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 417386472308845824 at 0.569 arcsec could produce up to 260930 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "APC"
+  },
+  {
+    "signal_id": "TOI-5307.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 2581395157304285952 at 32.779 arcsec could produce up to 4841 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "APC"
+  },
+  {
+    "signal_id": "TOI-800.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 4658169212529082752 at 34.247 arcsec could produce up to 93754 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "APC"
+  },
+  {
+    "signal_id": "TOI-4329.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "TOI-4329 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "CP"
+  },
+  {
+    "signal_id": "TOI-2524.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "TOI-2524 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "CP"
+  },
+  {
+    "signal_id": "TOI-519.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "TOI-519 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "CP"
+  },
+  {
+    "signal_id": "TOI-1248.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "TOI-1248 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "CP"
+  },
+  {
+    "signal_id": "TOI-3585.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 1947514613564285056 at 48.376 arcsec could produce up to 5072 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "CP"
+  },
+  {
+    "signal_id": "TOI-1333.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "TOI-1333 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "CP"
+  },
+  {
+    "signal_id": "TOI-2285.01",
+    "verdict": "known",
+    "confidence": 0.85,
+    "reasoning": "TOI-2285 b is catalogued here; the search period is 2x its period, which a blind search commonly returns",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "CP"
+  },
+  {
+    "signal_id": "TOI-2384.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "TOI-2384 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "CP"
+  },
+  {
+    "signal_id": "TOI-791.02",
+    "verdict": "known",
+    "confidence": 0.85,
+    "reasoning": "TOI-791 c is catalogued here; the search period is 4x its period, which a blind search commonly returns",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "CP"
+  },
+  {
+    "signal_id": "TOI-3983.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 1391814942889774080 at 1.268 arcsec could produce up to 390975 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FA"
+  },
+  {
+    "signal_id": "TOI-1275.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 1848265890810514304 at 4.481 arcsec could produce up to 70103 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FA"
+  },
+  {
+    "signal_id": "TOI-634.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 3836997377064332800 at 34.562 arcsec could produce up to 5207 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FA"
+  },
+  {
+    "signal_id": "TOI-692.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 3150354255306369280 at 45.057 arcsec could produce up to 2402 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FA"
+  },
+  {
+    "signal_id": "TOI-3740.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 212269520131326464 at 1.693 arcsec could produce up to 180717 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FA"
+  },
+  {
+    "signal_id": "TOI-4112.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 2239890595225447296 at 34.579 arcsec could produce up to 133200 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FA"
+  },
+  {
+    "signal_id": "TOI-6656.01",
+    "verdict": "insufficient",
+    "confidence": 0.6,
+    "reasoning": "1 source(s) in the aperture are brighter than the assumed target: the identification is unreliable",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FA"
+  },
+  {
+    "signal_id": "TOI-2078.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 1722276976550255744 at 40.294 arcsec could produce up to 269426 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FA"
+  },
+  {
+    "signal_id": "TOI-3827.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 700071251114691072 at 1.107 arcsec could produce up to 162110 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FA"
+  },
+  {
+    "signal_id": "TOI-4367.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 5868418295679024512 at 45.372 arcsec could produce up to 18384 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FP"
+  },
+  {
+    "signal_id": "TOI-6952.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 3452297465600931456 at 29.445 arcsec could produce up to 61960 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FP"
+  },
+  {
+    "signal_id": "TOI-3164.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 6082973318181952640 at 40.406 arcsec could produce up to 179518 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FP"
+  },
+  {
+    "signal_id": "TOI-4858.01",
+    "verdict": "insufficient",
+    "confidence": 0.6,
+    "reasoning": "2 source(s) in the aperture are brighter than the assumed target: the identification is unreliable",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FP"
+  },
+  {
+    "signal_id": "TOI-2168.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 2276541406587684992 at 22.552 arcsec could produce up to 31907 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FP"
+  },
+  {
+    "signal_id": "TOI-3712.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 3455292432197563648 at 35.622 arcsec could produce up to 88329 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FP"
+  },
+  {
+    "signal_id": "TOI-1770.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 1019092973660283520 at 4.87 arcsec could produce up to 7560 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FP"
+  },
+  {
+    "signal_id": "TOI-1578.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 456815990083808256 at 43.138 arcsec could produce up to 61582 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FP"
+  },
+  {
+    "signal_id": "TOI-914.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 4847363002947161344 at 47.713 arcsec could produce up to 2520 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "FP"
+  },
+  {
+    "signal_id": "TOI-5528.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "K2-117 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "KP"
+  },
+  {
+    "signal_id": "TOI-2129.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "HAT-P-14 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "KP"
+  },
+  {
+    "signal_id": "TOI-751.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "HATS-22 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "KP"
+  },
+  {
+    "signal_id": "TOI-1068.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "HATS-28 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "KP"
+  },
+  {
+    "signal_id": "TOI-5984.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "Kepler-495 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "KP"
+  },
+  {
+    "signal_id": "TOI-7856.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "Kepler-1520 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "KP"
+  },
+  {
+    "signal_id": "TOI-7903.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 2076937508795419136 at 58.248 arcsec could produce up to 74052 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "KP"
+  },
+  {
+    "signal_id": "TOI-1144.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "HAT-P-11 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "KP"
+  },
+  {
+    "signal_id": "TOI-5384.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "KELT-4 A b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "KP"
+  },
+  {
+    "signal_id": "TOI-2561.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 2221620040569393024 at 59.332 arcsec could produce up to 313388 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "PC"
+  },
+  {
+    "signal_id": "TOI-5754.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "PC"
+  },
+  {
+    "signal_id": "TOI-6323.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 325628374385831296 at 20.232 arcsec could produce up to 51671 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "PC"
+  },
+  {
+    "signal_id": "TOI-7577.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 3024850397474542464 at 21.332 arcsec could produce up to 75344 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "PC"
+  },
+  {
+    "signal_id": "TOI-5656.01",
+    "verdict": "interesting",
+    "confidence": 0.5,
+    "reasoning": "no catalogue match, no capable contaminant, no instrumental coincidence",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "PC"
+  },
+  {
+    "signal_id": "TOI-7223.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 2097620456384456832 at 13.713 arcsec could produce up to 157287 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "PC"
+  },
+  {
+    "signal_id": "TOI-5294.01",
+    "verdict": "contaminated",
+    "confidence": 0.6,
+    "reasoning": "source 2659923553364851840 at 1.193 arcsec could produce up to 462181 ppm, enough to account for the signal",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "PC"
+  },
+  {
+    "signal_id": "TOI-6625.01",
+    "verdict": "insufficient",
+    "confidence": 0.6,
+    "reasoning": "1 source(s) in the aperture are brighter than the assumed target: the identification is unreliable",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "PC"
+  },
+  {
+    "signal_id": "TOI-5605.01",
+    "verdict": "known",
+    "confidence": 0.95,
+    "reasoning": "TOI-5605 b is catalogued at this position with a matching period",
+    "stop_reason": "completed",
+    "error": null,
+    "true_disposition": "PC"
+  }
+]

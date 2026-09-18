@@ -34,10 +34,20 @@ DISPOSITION_COLUMN = "tfopwg_disp"
 
 # Selected explicitly. A SELECT * would pull ninety columns, and in triage mode
 # would pull the disposition along with them.
+#
+# st_rad, st_teff, st_logg and pl_rade are stellar/planet parameters already
+# computed by the TFOPWG pipeline that produces this table - reading them costs
+# nothing extra (same row, same query). They land in Signal.extra rather than as
+# named Signal fields: Signal is domain-agnostic by construction (D-012) and
+# these names are exoplanet-specific.
 SIGNAL_COLUMNS = (
     "toi", "tid", "ra", "dec",
     "pl_orbper", "pl_tranmid", "pl_trandep", "pl_trandurh",
+    "st_rad", "st_teff", "st_logg", "pl_rade",
 )
+
+# Keys under Signal.extra populated from the columns above.
+EXTRA_COLUMNS = ("st_rad", "st_teff", "st_logg", "pl_rade")
 
 # BTJD = BJD - 2457000. TESS light-curve timestamps are BTJD; the catalog
 # records mid-transit in BJD. Mixing them displaces an ephemeris by four and a
@@ -98,6 +108,7 @@ def signal_from_row(row, source: str = "toi") -> Signal:
         depth_ppm=_number(row.get("pl_trandep")),
         duration_hours=_number(row.get("pl_trandurh")),
         target_id=None if row.get("tid") is None else f"TIC {row['tid']}",
+        extra={key: _number(row.get(key)) for key in EXTRA_COLUMNS},
     )
 
 
@@ -171,7 +182,8 @@ def fetch_benchmark_sample(
 
 BENCHMARK_FIELDS = (
     "signal_id", "target_id", "ra_deg", "dec_deg",
-    "period_days", "epoch_btjd", "depth_ppm", "duration_hours", "disposition",
+    "period_days", "epoch_btjd", "depth_ppm", "duration_hours",
+    *EXTRA_COLUMNS, "disposition",
 )
 
 
@@ -182,7 +194,7 @@ def write_benchmark(sample: list[tuple[Signal, str]], path: Path) -> None:
         writer = csv.DictWriter(fh, fieldnames=BENCHMARK_FIELDS)
         writer.writeheader()
         for signal, label in sample:
-            writer.writerow({
+            row = {
                 "signal_id": signal.signal_id,
                 "target_id": signal.target_id or "",
                 "ra_deg": signal.ra_deg,
@@ -192,7 +204,11 @@ def write_benchmark(sample: list[tuple[Signal, str]], path: Path) -> None:
                 "depth_ppm": signal.depth_ppm if signal.depth_ppm else "",
                 "duration_hours": signal.duration_hours if signal.duration_hours else "",
                 "disposition": label,
-            })
+            }
+            for key in EXTRA_COLUMNS:
+                value = signal.extra.get(key)
+                row[key] = value if value else ""
+            writer.writerow(row)
 
 
 def load_benchmark(path: Path) -> list[tuple[Signal, str]]:
@@ -214,6 +230,71 @@ def load_benchmark(path: Path) -> list[tuple[Signal, str]]:
                 depth_ppm=_number(row["depth_ppm"] or None),
                 duration_hours=_number(row["duration_hours"] or None),
                 target_id=row["target_id"] or None,
+                extra={key: _number(row.get(key) or None) for key in EXTRA_COLUMNS},
             )
             out.append((signal, row["disposition"]))
     return out
+
+
+def enrich_extra_columns(path: Path, service=None) -> dict[str, int]:
+    """Fill EXTRA_COLUMNS into an already-pinned benchmark file, in place.
+
+    Queries the live catalog once for every row's extra parameters and matches
+    the result back to the file by signal_id - built the same way
+    ``signal_from_row`` builds it (``TOI-{toi}``) - rather than re-sampling.
+    Which signals are pinned, and their dispositions, are untouched.
+
+    This is deliberately not "regenerate the benchmark". ``fetch_benchmark_sample``
+    selects rows by position in each class's row list (D-025); the TOI catalog
+    is live and its per-class row lists change as follow-up accumulates -
+    dispositions get revised, and new TOIs are added - so the same seed against
+    today's catalog lands on a largely different 600 signals than the pinned
+    file holds, and any survivors could carry a revised disposition. The pinned
+    sample is what makes two evaluations run weeks apart comparable (D-015); it
+    is refreshed only as a deliberate, dated act (D-025), never as a side effect
+    of adding columns (D-037).
+
+    A signal_id no longer found in the live catalog gets blank extra columns
+    rather than being dropped: a row missing a column is still the same pinned
+    signal with the same disposition, comparable to what past runs scored
+    against it. Dropping it would not be.
+    """
+    path = Path(path)
+    with path.open(encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        fieldnames = list(reader.fieldnames or [])
+        rows = list(reader)
+
+    columns = ", ".join(("toi", *EXTRA_COLUMNS))
+    adql = f"SELECT {columns} FROM {TABLE} WHERE toi IS NOT NULL"
+    try:
+        catalog_rows = (service or _service()).search(adql).to_table()
+    except Exception as exc:
+        raise QueueUnavailable(f"TOI query failed: {exc}") from exc
+
+    by_signal_id: dict[str, dict] = {}
+    for r in catalog_rows:
+        record = dict(zip(r.colnames, r, strict=False))
+        toi = record.get("toi")
+        if toi is not None:
+            by_signal_id[f"TOI-{toi}"] = record
+
+    matched = 0
+    for row in rows:
+        record = by_signal_id.get(row["signal_id"])
+        if record is not None:
+            matched += 1
+        for key in EXTRA_COLUMNS:
+            value = _number(record.get(key)) if record else None
+            row[key] = value if value else ""
+
+    out_fieldnames = [f for f in fieldnames if f not in EXTRA_COLUMNS]
+    insert_at = out_fieldnames.index("disposition")
+    out_fieldnames[insert_at:insert_at] = list(EXTRA_COLUMNS)
+
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=out_fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    return {"total": len(rows), "matched": matched, "unmatched": len(rows) - matched}

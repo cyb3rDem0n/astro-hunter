@@ -196,7 +196,7 @@ def test_the_declared_ceiling_is_stated_explicitly_in_the_report():
     report = compare([], [])
     text = format_report(report)
     assert "EXPLAINED is reachable by the rule path only via implied radius" in text
-    assert "INSTRUMENTAL/FA is unreachable by BOTH paths" in text
+    assert "INSTRUMENTAL/FA is reachable by BOTH paths only for a target with" in text
 
 
 def test_the_report_states_the_majority_baseline_and_disclaims_raw_accuracy():

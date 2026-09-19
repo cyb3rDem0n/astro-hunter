@@ -24,6 +24,7 @@ from fastmcp import FastMCP
 
 from astro_hunter.core.models import Signal
 from astro_hunter.domains.exoplanets import catalogs, neighbours
+from astro_hunter.domains.exoplanets.photometry import tess
 
 mcp = FastMCP("astro-hunter")
 
@@ -162,6 +163,64 @@ def check_aperture_contamination(
         "brighter_neighbours": summary.payload.get("brighter_neighbours", 0),
         "neighbours": capable[:MAX_ITEMS],
         "findings": _flatten(evidence, limit=3),
+    }
+
+
+@mcp.tool
+def check_instrumental_coincidence(
+    target_id: str,
+    epoch_btjd: float,
+    period_days: float,
+    duration_hours: float | None = None,
+) -> dict:
+    """Check whether a signal's transits coincide with spacecraft events or gaps.
+
+    Uses the on-disk TESS light-curve cache (D-040): no MAST query at all when
+    the target is already cached, which every signal in the pinned baseline
+    is. A periodic pattern in the *observing record* — momentum dumps,
+    scattered light, attitude tweaks, or the data gaps between orbits — can
+    look exactly like a periodic transit to a blind period search.
+
+    Needs the signal's ephemeris (epoch_btjd, period_days) to predict where
+    transits should fall, and target_id (a TIC identifier, e.g. "TIC 12345")
+    to find its light curve.
+
+    'assessed: false' means this check could not run at all — either the
+    signal has no target_id, or TESS never observed this target at 2-minute
+    cadence (SPOC ships nothing at that cadence for signals seen only in the
+    full-frame images; the 'finding' text says which). This is NOT evidence
+    the signal is clean, the same rule that applies to every unreachable
+    archive: absence of a light curve is not absence of an instrumental
+    artefact.
+
+    When assessed, reports how many predicted transits actually have data
+    coverage, how many fall in observing gaps (a candidate alias of the
+    window rather than the star), and what fraction of in-transit cadences
+    carry a spacecraft-event quality flag. A high flagged fraction, or most
+    transits landing in gaps, means the signal is following the spacecraft,
+    not the star.
+    """
+    # ra_deg/dec_deg are required on Signal but unused by this check (it
+    # reasons over the light curve's own time array, not sky position) -
+    # placeholders, never read or reported.
+    signal = Signal(
+        signal_id=target_id, source="mcp", ra_deg=0.0, dec_deg=0.0,
+        target_id=target_id, epoch=epoch_btjd, period_days=period_days,
+        duration_hours=duration_hours,
+    )
+    evidence = tess.check_instrumental_coincidence(signal)
+
+    summary = evidence[0]
+    if not summary.payload.get("assessed", True):
+        return {"assessed": False, "finding": summary.summary}
+
+    return {
+        "assessed": True,
+        "predicted_transits": summary.payload.get("predicted_transits"),
+        "observed_transits": summary.payload.get("observed_transits"),
+        "cadence_days": summary.payload.get("cadence_days"),
+        "quality_flags_available": summary.payload.get("quality_flags_available"),
+        "findings": _flatten(evidence, limit=len(evidence)),
     }
 
 

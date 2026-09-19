@@ -3,6 +3,7 @@
 import asyncio
 
 from astro_hunter.domains.exoplanets import catalogs, neighbours
+from astro_hunter.domains.exoplanets.photometry import tess
 from astro_hunter.mcp import server as S
 
 POS = (84.29928, -80.464604)
@@ -17,6 +18,7 @@ def test_the_expected_tools_are_registered():
         "check_confirmed_planets",
         "check_aperture_contamination",
         "check_period_relation",
+        "check_instrumental_coincidence",
     }
 
 
@@ -106,3 +108,54 @@ def test_an_absent_target_is_stated_plainly(monkeypatch):
     result = S.check_aperture_contamination(*POS, depth_ppm=900)
     assert result["target_found"] is False
     assert "neighbours" not in result
+
+
+# --- check_instrumental_coincidence (D-041) ------------------------------------
+
+def test_an_unassessable_target_says_so_not_clean(monkeypatch):
+    """No 2-minute product (or no target_id) must read as 'not assessed', never
+    as 'nothing wrong' - the same doctrine every other unreachable check gets."""
+    from datetime import UTC, datetime
+
+    from astro_hunter.core.models import Evidence, EvidenceKind
+
+    monkeypatch.setattr(tess, "check_instrumental_coincidence", lambda *a, **k: [
+        Evidence(kind=EvidenceKind.INSTRUMENTAL_WINDOW, source="observing record",
+                 summary="no SPOC 2-minute product for TIC 1; instrumental "
+                         "coincidence not assessable",
+                 retrieved_at=datetime.now(UTC),
+                 payload={"assessed": False, "available_2min": False})
+    ])
+    result = S.check_instrumental_coincidence(
+        target_id="TIC 1", epoch_btjd=1.5, period_days=6.27,
+    )
+    assert result == {
+        "assessed": False,
+        "finding": "no SPOC 2-minute product for TIC 1; instrumental "
+                   "coincidence not assessable",
+    }
+
+
+def test_an_assessed_result_is_flattened_to_a_small_dict(monkeypatch):
+    from datetime import UTC, datetime
+
+    from astro_hunter.core.models import Evidence, EvidenceKind
+
+    monkeypatch.setattr(tess, "check_instrumental_coincidence", lambda *a, **k: [
+        Evidence(kind=EvidenceKind.INSTRUMENTAL_WINDOW, source="observing record",
+                 summary="6 of 6 predicted transits have data coverage above 50%",
+                 retrieved_at=datetime.now(UTC),
+                 payload={"assessed": True, "predicted_transits": 6,
+                          "observed_transits": 6, "baseline_days": 27.4,
+                          "cadence_days": 120 / 86400,
+                          "quality_flags_available": True, "per_transit": []})
+    ])
+    result = S.check_instrumental_coincidence(
+        target_id="TIC 1", epoch_btjd=1.5, period_days=6.27, duration_hours=2.8,
+    )
+    assert result["assessed"] is True
+    assert result["predicted_transits"] == 6
+    assert result["observed_transits"] == 6
+    assert result["quality_flags_available"] is True
+    assert "per_transit" not in result
+    assert len(result["findings"]) == 1

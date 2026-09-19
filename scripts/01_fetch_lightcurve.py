@@ -14,7 +14,7 @@ def main() -> None:
     search, raw_lc, clean_lc = download_tess_lightcurve(TARGET, SECTOR)
 
     print("\n=== MAST SEARCH RESULT ===")
-    print(search)
+    print(search if search is not None else "(served from the on-disk cache; MAST was not queried)")
     print("\n=== LIGHT CURVE ===")
     print(f"Target: {TARGET}")
     print(f"Sector: {SECTOR}")

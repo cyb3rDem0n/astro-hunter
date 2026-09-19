@@ -43,6 +43,7 @@ TOOL_FUNCTIONS = {
     "check_confirmed_planets": mcp_server.check_confirmed_planets,
     "check_aperture_contamination": mcp_server.check_aperture_contamination,
     "check_period_relation": mcp_server.check_period_relation,
+    "check_instrumental_coincidence": mcp_server.check_instrumental_coincidence,
 }
 
 

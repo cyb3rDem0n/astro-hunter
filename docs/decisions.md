@@ -1651,3 +1651,210 @@ Covered by unit tests in `tests/unit/test_neighbours.py` and
 54 signals via `scripts/11_rule_triage.py --from-run runs/rule_baseline.json`)
 is committed alongside `runs/rule_D038_after.json`, so this comparison stays
 reproducible from the two files rather than only from this table.
+
+---
+
+## D-040 — TESS light curves are cached on disk, and MAST gets the same treatment as every other archive
+
+**Context.** Any real photometric check (odd/even depth, secondary eclipse -
+the checks D-021/D-039 already name as the actual path to recovering `FP`
+recall) needs an actual light curve, not just catalog rows. Before building
+one, every experiment that touches photometry would otherwise re-download the
+same product from MAST on every run - the pilot runs already showed what
+repeatedly hitting an archive without a cache costs on Gaia (D-032, D-033),
+and a TESS SPOC light curve is megabytes, not the kilobytes of a TAP row.
+
+**Decision.** `domains/exoplanets/photometry/tess.py` caches the raw
+downloaded light curve to `data/raw/lightcurves/TIC<id>/sector<NNN>_spoc_120s.fits`
+before any cleaning, and reads from there on every later call for the same
+TIC/sector. Only the raw product is cached, never the cleaned one: raw
+observational data is immutable (AGENTS.md), so caching the input rather than
+the output means a later change to the cleaning parameters (D-004, still
+open) recomputes correctly from the same bytes instead of serving a stale
+cleaned result. Verified numerically neutral against the reference target
+(Pi Mensae, TIC 261136679, Sector 1, D-007): a cache hit reproduces the
+identical flux and time arrays a fresh download produces, checked directly
+rather than assumed.
+
+MAST gets the same standing as Gaia and the NASA Exoplanet Archive (D-032,
+D-033): a module-level `CircuitBreaker` and the shallow `RetryPolicy` from
+`core/http.py`, applied around the search-and-download call as a whole. It
+could not be wired in the same way as the TAP archives - astroquery, which
+`lightkurve` calls into, manages its own `requests.Session` internally, so
+`core.http.TimeoutSession` cannot be injected into it - so the retry loop and
+breaker bookkeeping are done by hand in `_call_with_retry`, and
+`astroquery.mast.Conf.timeout` is set to the same `DEFAULT_TIMEOUT_SECONDS`
+(60 s) every other archive uses, rather than a second, independently-chosen
+number. A legitimate empty result (no product found) raises immediately
+without spending the retry budget, the same distinction D-032 draws between a
+transient failure and a query that will not change on a second attempt.
+
+**The 54-signal rule-engine baseline (D-021, `runs/rule_baseline.json`) was
+downloaded and cached** via `scripts/01_cache_baseline_lightcurves.py`, run
+live against MAST on 2026-09-18. Of the 54:
+
+- **44 have a SPOC 2-minute product** and were downloaded and cached (one
+  sector each, the earliest available).
+- **10 do not** - they are seen only in the full-frame images (QLP,
+  TESS-SPOC, and similar FFI-derived pipelines), and no photometric check
+  built on 2-minute cadence can run for them:
+  `TOI-1578.01`, `TOI-3164.01`, `TOI-3983.01`, `TOI-5656.01`, `TOI-5694.01`,
+  `TOI-6656.01`, `TOI-6952.01`, `TOI-7115.01`, `TOI-7223.01`, `TOI-7613.01`.
+- No MAST timeouts or circuit-breaker trips occurred during this run.
+
+Full detail (every sector found per target, which one was cached) is in
+`runs/lightcurve_availability.json`, committed alongside the run.
+
+**Consequence, stated plainly.** Any future photometric check that assumes
+2-minute cadence is only reachable for 44 of these 54 signals, not all 54 -
+the same "checks parity" concern D-035 raised for the instrumental check
+applies here in the other direction: a check silently limited to a subset of
+the sample changes what a comparison against it actually measures, so that
+subset is recorded here rather than discovered later.
+
+**Status.** Active. Implemented in `domains/exoplanets/photometry/tess.py`
+(`get_cached_lightcurve`, `_call_with_retry`, `spoc_2min_sectors`) and
+`scripts/01_cache_baseline_lightcurves.py`. `data/raw/lightcurves/` is not
+committed (AGENTS.md data policy); `runs/lightcurve_availability.json` is.
+
+---
+
+## D-041 — The instrumental-coincidence check is wired into both triage paths
+
+**Context.** D-035 stated plainly that `INSTRUMENTAL`/`FA` was unreachable by
+either path: the TOI queue carries no light curve, and `domains/exoplanets/
+instrumental.py` (`check_instrumental`, `FLAGGED_FRACTION_ALERT = 0.3`,
+`MIN_OBSERVED_TRANSITS = 2`, `MIN_COVERAGE = 0.5`) already existed but had
+nothing to call it with. D-040 removed that blocker for 44 of the 54
+pinned-baseline signals by caching a SPOC 2-minute light curve on disk. This
+decision spends that cache: it gives `check_instrumental` a light curve's
+time and quality arrays and wires the result into both the rule engine and
+the agent, keeping checks parity (D-035) rather than adding it to one side
+only.
+
+**Decision.** `domains/exoplanets/photometry/tess.py:check_instrumental_coincidence`
+reads a target's cached sector (downloading once if not yet cached, same as
+D-040), selects `quality` when the column is present, and passes both into
+the existing, untouched `check_instrumental`. Neither threshold in
+`instrumental.py` was changed by this decision - only the acquisition side
+that feeds it. Two absence cases return `assessed: False` and emit no
+`flagged_fraction`, `transits_in_gaps` or `minimum_required` key, so neither
+can drive a `derive_verdict` rule: no `target_id` on the signal, and no SPOC
+2-minute product for the target at all (the same 10-of-54 D-040 already
+named). Absence of a light curve is not read as absence of an instrumental
+artefact.
+
+Wiring is symmetric, per D-035:
+
+- **Rule engine** (`scripts/11_rule_triage.py`): `check_instrumental_coincidence`
+  added to the `CHECKS` dict alongside `crossmatch_confirmed` and
+  `crossmatch_neighbours`.
+- **Agent**: a new MCP tool, `check_instrumental_coincidence`
+  (`src/astro_hunter/mcp/server.py`), built from the same `tess.py` function
+  and registered in `scripts/20_agent_triage.py`'s `TOOL_FUNCTIONS`. The
+  agent's system prompt (`core/agent.py`) gained a step describing when to
+  call it and how to read `assessed: false` - explicitly as "unreachable
+  archive", never as a clean result.
+
+**Two `derive_verdict` rules this newly makes reachable, not newly written.**
+Rule 2 (`INSTRUMENTAL` on `flagged_fraction > 0` or half-or-more of predicted
+transits in gaps) and rule 3 (`INSUFFICIENT` on fewer than
+`MIN_OBSERVED_TRANSITS` observed) were already present in `core/evidence.py`
+but dead code: nothing produced `INSTRUMENTAL_WINDOW` evidence with those
+payload keys before this decision. Both are now live for the 44 cached
+signals, and rule 3's insufficient-coverage path fires for reasons that have
+nothing to do with instrumental artefacts - it is a data-coverage check, not
+a spacecraft-coincidence one, and this decision surfaces it for the first
+time.
+
+**Measured against `runs/rule_baseline.json`** (the pre-D-038 state, so this
+table bundles the cumulative effect of D-038, D-039 and this decision
+together, not this decision in isolation), rule engine, same 54 pinned
+signals via `scripts/11_rule_triage.py --from-run runs/rule_baseline.json`,
+live archive queries, 2026-09-19:
+
+```
+class          P before   P after   R before   R after   F1 before  F1 after   n
+KNOWN            94.1%     94.1%     88.9%     88.9%      91.4%     91.4%     18
+INSTRUMENTAL       n/a     25.0%      0.0%     11.1%        n/a     15.4%      9
+FP               26.7%     50.0%     88.9%     11.1%      41.0%     18.2%      9
+INTERESTING      66.7%     23.1%     22.2%     66.7%      33.3%     34.3%      9
+INSUFFICIENT     25.0%     20.0%     11.1%     11.1%      15.4%     14.3%      9
+macro P/R/F1: 53.1%/42.2%/45.3% -> 42.4%/37.8%/34.7%
+```
+
+31 of the 54 verdicts changed between these two files, but almost all of that
+movement is D-038/D-039, already reported in their own decisions - `contaminated`
+dropping out as the default verdict is what D-038 did, and the two
+`interesting -> explained` moves (`TOI-3164.01`, `TOI-3740.01`) are D-039's.
+
+**Isolating this decision's own effect**, against `runs/rule_D039_after.json`
+(the state immediately before this one, same convention D-039 used against
+D-038 - see D-039):
+
+```
+class          P prior   P after   R prior   R after   F1 prior   F1 after   n
+KNOWN            94.1%     94.1%     88.9%     88.9%      91.4%     91.4%    18
+INSTRUMENTAL       n/a     25.0%      0.0%     11.1%        n/a     15.4%     9
+FP               50.0%     50.0%     11.1%     11.1%      18.2%     18.2%     9
+INTERESTING      22.6%     23.1%     77.8%     66.7%      35.0%     34.3%     9
+INSUFFICIENT     25.0%     20.0%     11.1%     11.1%      15.4%     14.3%     9
+macro P/R/F1: 47.9%/37.8%/40.0% -> 42.4%/37.8%/34.7%
+```
+
+Exactly 5 of 54 verdicts changed, all previously `interesting`:
+
+- `TOI-1275.01` (true `FA`) -> `instrumental`, 35% flagged fraction. The one
+  true positive.
+- `TOI-311.01` (true `APC`) -> `instrumental`, 30% flagged fraction. False
+  positive.
+- `TOI-4367.01` (true `FP`) -> `instrumental`, 39% flagged fraction. False
+  positive.
+- `TOI-6323.01` (true `PC`) -> `instrumental`, 40% flagged fraction. False
+  positive.
+- `TOI-2168.01` (true `FP`) -> `insufficient`, 1 of 2 required transits
+  observed in the cached sector - rule 3, not rule 2; not an instrumental
+  claim about this signal at all, and does not change `FP`'s P/R/F1 (both
+  `interesting` and `insufficient` are non-accepted verdicts for `FP`).
+
+**`INSTRUMENTAL` recall, reported two ways because one number alone would
+either overstate or understate what this check does, per the request that
+produced this decision.**
+
+- **Over all 9 true `FA` signals - the honest number for the whole-sample
+  comparison above**: 1/9 = 11.1%. Two of the 9 (`TOI-3983.01`,
+  `TOI-6656.01`) have no SPOC 2-minute product (D-040) and return
+  `assessed: false`; they cannot be caught by this check regardless of how
+  well it works, and folding them into the denominator is the fair
+  treatment of "the check didn't run" as a miss, not a hidden pass.
+- **Over the 7 `FA` signals with a cached light curve - whether the check
+  itself works, filtered via `runs/lightcurve_availability.json`
+  `available_2min`**: 1/7 = 14.3%. Still one true positive; the smaller,
+  reachable denominator is the number to watch when judging the check's own
+  discriminating power rather than its current coverage.
+
+**Consequence, stated plainly.** `INSTRUMENTAL` precision is 25% (1/4): the
+check fires on 3 non-`FA` signals (`TOI-311.01` APC, `TOI-4367.01` FP,
+`TOI-6323.01` PC) at flagged fractions of 30-40%, essentially the same range
+as the one true positive (35%). `FLAGGED_FRACTION_ALERT = 0.3` in
+`instrumental.py` and the unconditional `> 0` check in `derive_verdict` rule
+2 both predate this decision and were not touched by it - only the
+acquisition path that now actually calls them was added - so this is a
+report of the existing threshold's behaviour on real light curves, not a
+regression introduced here. Recalibrating that threshold is a scientific
+parameter change (AGENTS.md) and is out of scope for this decision; it is
+recorded here so the next person to touch `FLAGGED_FRACTION_ALERT` has the
+real false-positive rate in hand rather than the untested guess D-035 left
+it as.
+
+**Status.** Active. Implemented in `domains/exoplanets/photometry/tess.py`
+(`check_instrumental_coincidence`), `scripts/11_rule_triage.py` (`CHECKS`),
+`src/astro_hunter/mcp/server.py` (`check_instrumental_coincidence` tool),
+`scripts/20_agent_triage.py` (`TOOL_FUNCTIONS`) and `core/agent.py` (prompt
+guidance). Covered by unit tests in `tests/unit/test_tess.py` and
+`tests/unit/test_mcp_server.py`. `runs/rule_D041_after.json` (post-change,
+same 54 signals via `scripts/11_rule_triage.py --from-run
+runs/rule_baseline.json`) is committed alongside `runs/rule_baseline.json`,
+`runs/rule_D039_after.json` and `runs/lightcurve_availability.json` (D-040),
+so both comparisons above stay reproducible from committed files rather than
+only from this table.

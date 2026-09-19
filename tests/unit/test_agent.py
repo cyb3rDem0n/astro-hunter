@@ -101,6 +101,12 @@ def test_the_signal_description_includes_what_is_present():
     assert "6.27" in text and "321" in text
 
 
+def test_the_signal_description_includes_the_epoch_when_present():
+    """The agent needs the epoch to call check_instrumental_coincidence (D-041)."""
+    text = describe_signal(sig(epoch=1234.5))
+    assert "1234.5" in text
+
+
 # --- the loop -----------------------------------------------------------------
 
 def test_a_direct_verdict_ends_the_run():

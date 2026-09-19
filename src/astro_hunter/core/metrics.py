@@ -26,13 +26,15 @@ The rule engine's only route to `EXPLAINED` is the implied-radius check
 enough to imply an eclipsing body above ~2 R_Jup. It has no odd/even-depth or
 secondary-eclipse check (D-021), so an on-target eclipsing binary whose
 implied radius does not clear that ceiling - most of them, per D-039's
-measurement - is invisible to it by any route. And *neither* path can
-produce a grounded `INSTRUMENTAL` verdict here: the TOI queue carries no
-light curve, so neither the rule engine nor the agent is given an
-instrumental check (D-035) - same reason `scripts/11_rule_triage.py` wires
-only the two checks `scripts/20_agent_triage.py` exposes to the agent, and
-no more. If a check is ever added to one path, it must be added to both, or
-the comparison starts measuring evidence access instead of judgement.
+measurement - is invisible to it by any route. `INSTRUMENTAL` is reachable
+by both paths (D-040, D-041) only for a target with a cached TESS 2-minute
+light curve - 44 of the 54 pinned-baseline signals, not all of them (D-040).
+For the other 10, `check_instrumental_coincidence` returns `assessed: false`
+and produces no verdict, on both paths identically - never silently read as
+"clean". `scripts/11_rule_triage.py` wires exactly the tools
+`scripts/20_agent_triage.py` exposes to the agent, and no more (D-035). If a
+check is ever added to one path, it must be added to both, or the comparison
+starts measuring evidence access instead of judgement.
 
 Boundaries: reports numbers, never adjusts thresholds to improve them.
 """
@@ -276,9 +278,10 @@ def format_report(report: ComparisonReport) -> str:
         "    (D-039, needs a stellar radius); it has no odd/even-depth or",
         "    secondary-eclipse check, so most on-target eclipsing binaries",
         "    still escape it.",
-        "  - INSTRUMENTAL/FA is unreachable by BOTH paths (D-035): the TOI queue",
-        "    carries no light curve, so neither path is given an instrumental",
-        "    check. A predicted INSTRUMENTAL from either side is not grounded.",
+        "  - INSTRUMENTAL/FA is reachable by BOTH paths only for a target with",
+        "    a cached TESS 2-minute light curve (D-040/D-041) - 44 of 54 in the",
+        "    pinned baseline. For the other 10, the check is not assessed and",
+        "    produces no verdict on either side; it is never read as clean.",
         "",
         (
             f"Majority-class baseline (D-015, pinned catalog proportions): "

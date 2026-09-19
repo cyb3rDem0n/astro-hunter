@@ -1858,3 +1858,122 @@ runs/rule_baseline.json`) is committed alongside `runs/rule_baseline.json`,
 `runs/rule_D039_after.json` and `runs/lightcurve_availability.json` (D-040),
 so both comparisons above stay reproducible from committed files rather than
 only from this table.
+
+---
+
+## D-042 — OPEN: the pinned TOI disposition disagrees with the live confirmed-planet archive for 3 of the 54 baseline signals
+
+**Discrepancy.** The repository currently disagrees with itself in the same
+sense D-004 does: two paths that are each individually correct produce
+different answers for the same object, and picking one is not a call the
+code should make on its own (AGENTS.md).
+
+- **Path A**: the pinned TOI disposition (D-015 snapshot,
+  `tests/fixtures/toi_benchmark.csv`, dated 2026-09-10) - the label every
+  decision from D-021 onward has scored against.
+- **Path B**: `domains/exoplanets/catalogs.py:crossmatch_confirmed`, a live
+  query against the NASA Exoplanet Archive's `pscomppars` table - the same
+  query the rule engine and the agent both already run on every triage pass.
+
+Both are legitimate. `pscomppars` is definitionally more current about
+confirmation status than a frozen snapshot; the frozen snapshot is what makes
+two evaluations run weeks apart comparable at all (D-015's own reasoning),
+and `sources/toi.py`'s module docstring already names the mechanism: "Dispositions
+are revised as follow-up accumulates."
+
+**Found by querying `pscomppars` directly for all 54 pinned baseline
+signals** (`load_benchmark` + `crossmatch_confirmed`, bypassing
+`derive_verdict`'s rule cascade so a match is not silently swallowed by an
+earlier-firing rule), live, 2026-09-19. Two distinct directions of drift, not
+one:
+
+1. **A pinned `PC` (candidate) now has a same-period confirmed match**:
+   `TOI-5605.01` -> `TOI-5605 b`, `period_relation == "match"`, 0.00 arcsec
+   separation. 1 of the 9 pinned `PC` signals (11.1%). This is the case
+   already reachable through the normal run files - `verdict: "known"` for a
+   `true_disposition: "PC"` signal, present unchanged in `rule_baseline.json`,
+   `rule_D039_after.json` and `rule_D041_after.json` alike, because
+   `crossmatch_confirmed` itself was not touched by any of those decisions.
+
+2. **Two pinned `KP`/`CP` (already confirmed) signals have *zero* positional
+   matches in `pscomppars` today**: `TOI-3585.01` (`CP`) and `TOI-7903.01`
+   (`KP`). Checked at the default 5 arcsec radius and again at 120 arcsec for
+   both - still zero matches at either radius, which rules out a
+   proper-motion/reference-epoch tolerance artifact as the cause. Why a
+   catalogued confirmed planet is absent from `pscomppars` at its own TOI
+   position was not investigated further: it could be a naming/cross-ID
+   mismatch, a listing quirk in how `pscomppars` maps multi-planet or
+   alternate-designation systems, or the pinned disposition itself being
+   stale in the other direction - distinguishing those needs looking at the
+   actual archive entries for these two host stars, which is exactly the
+   kind of call this decision defers rather than guesses at. 2 of the 18
+   pinned `KP`/`CP` signals (11.1%).
+
+**Follow-up (2026-09-19, same day): is this a cross-match gap or a stale
+label?** Checked directly against the archive's real entries, not inferred.
+
+- **By TIC ID**, exact match on the `tic_id` column (`'TIC 287591638'`,
+  `'TIC 169176556'` - confirmed present and correctly formatted by sampling
+  other `pscomppars` rows first) against both `pscomppars` and `ps`: zero
+  rows for either target, in either table.
+- **By name**, `pl_name LIKE 'TOI-3585%'` / `'TOI-7903%'` and the equivalent
+  on `hostname`, against both tables: zero rows. Neither planet is listed
+  under its TOI-based designation, whatever else it might be listed under.
+- **By position**, widened to a 5 arcmin cone (well past any plausible
+  proper-motion or reference-epoch offset) on both tables: `TOI-3585.01`
+  still zero rows. `TOI-7903.01` returns `Kepler-501 b`/`c` - a different
+  system, `TIC 169176340` (not `TIC 169176556`), roughly 4 arcmin away - a
+  chance neighbour in the Kepler field this position sits in, not the same
+  star under a different name.
+- **The live `toi` table itself**, queried fresh rather than trusted from
+  the pinned snapshot: `tfopwg_disp` is still `CP` for `TOI-3585.01` and
+  `KP` for `TOI-7903.01` today, same `tid`, same `ra`/`dec`, same
+  `pl_orbper` as the pinned row. The disposition has not been revised out
+  from under the pinned label - TFOPWG's own table agrees with D-015's
+  snapshot both then and now.
+
+**Conclusion: this is measurement noise, not a cross-match code gap.**
+`crossmatch_confirmed` queries position correctly (a positional search
+cannot miss a real entry regardless of what it is named), and there is
+verifiably nothing for either object in `pscomppars` or `ps`, by ID, by
+name, or by position, in the NASA Exoplanet Archive today. TFOPWG's
+disposition table asserts a confirmation the separate confirmed-planet
+composite tables have not (yet) ingested - two products inside the same
+archive, updated on different schedules, disagreeing with each other before
+`astro_hunter` ever queries either one. No code defect was found to fix, so
+none was touched, per the instruction that produced this follow-up.
+
+**This is not new noise introduced by D-038/D-039/D-041 - it was already
+priced into every comparison in this log and simply had not been isolated
+before.** `KNOWN` recall has read 88.9% (16/18) identically in
+`rule_baseline.json`, `rule_D039_after.json` and `rule_D041_after.json`,
+because the same two signals (`TOI-3585.01`, `TOI-7903.01`) miss for the
+same reason - the confirmed-planet check finds nothing there, not because
+any rule-engine change regressed it - in all three. `TOI-5605.01` has scored
+as an `INTERESTING`-class miss for the same three runs for the mirror reason.
+
+**3 of 54 pinned baseline signals (5.6%) disagree with what the live
+confirmed-planet archive says today**, in both directions at once. That is
+the noise floor in the metric everything in D-038 through D-041 has been
+measured against, independent of anything those decisions changed.
+
+**Not resolved, and not scheduled for resolution here**, per the explicit
+instruction that produced this decision. The pinned sample stays exactly as
+D-015 fixed it - `metrics.py` continues to score `TOI-5605.01`,
+`TOI-3585.01` and `TOI-7903.01` against their pinned labels precisely as
+before. Whether to refresh the pinned snapshot (a deliberate, dated act per
+D-025, not a side effect of this audit), exclude these three signals, or
+leave the benchmark untouched and simply note the ceiling this discrepancy
+puts on `KNOWN`/`INTERESTING` recall, is not decided here.
+
+**Status.** OPEN, with the code-vs-label question above now closed: this is
+archive-side measurement noise (TFOPWG disposition ahead of the confirmed-
+planet composite tables' own ingestion), not a gap in `crossmatch_confirmed`.
+No code, benchmark, or run file was changed by this decision - it is a
+report, not a fix. Reproducible by running `crossmatch_confirmed` from
+`domains/exoplanets/catalogs.py` against the 54 signal_ids in
+`runs/rule_baseline.json`, resolved back to `Signal` objects via
+`load_benchmark(tests/fixtures/toi_benchmark.csv)`; the by-ID/by-name/by-
+position follow-up queries against `pscomppars`, `ps` and the live `toi`
+table were run directly via `astro_hunter.core.http.tap_service`, not
+through a committed script.

@@ -1977,3 +1977,77 @@ report, not a fix. Reproducible by running `crossmatch_confirmed` from
 position follow-up queries against `pscomppars`, `ps` and the live `toi`
 table were run directly via `astro_hunter.core.http.tap_service`, not
 through a committed script.
+
+---
+
+## D-043 — Macro F1 disagreed with the binary safety metric across D-038, D-039 and D-041; D-041 is the only net-negative one
+
+**Context.** `score()`'s macro F1 has been the number every rule-engine
+decision in this log since D-021 was judged against. `score_binary()` (this
+session, `core/metrics.py`) adds the split AGENTS.md's "a detected signal is
+a candidate, not automatically a planet" and D-035's checks-parity concern
+both already implied but never scored directly: not per-class averaging, but
+whether a real `PC`/`APC` signal came back `Verdict.is_resolved` and would
+therefore leave the queue with nobody ever looking at it again
+(`needs_review_discarded`), against the efficiency number that removal buys
+(`queue_reduction`).
+
+**Finding, measured on the four committed run files**
+(`runs/rule_baseline.json`, `runs/rule_D038_after.json`,
+`runs/rule_D039_after.json`, `runs/rule_D041_after.json`, same 54 signals
+throughout, via `score`/`score_binary` directly - no network):
+
+```
+                 macro F1   queue reduction   needs-review discarded
+rule_baseline      45.3%         87.0%             13/18
++D-038             46.7%         31.5%              1/18  (TOI-5605.01)
++D-039             40.0%         35.2%              1/18  (TOI-5605.01, unchanged)
++D-041             34.7%         42.6%              3/18  (+TOI-311.01, +TOI-6323.01)
+```
+
+**D-038 alone is the real fix.** Requiring positive evidence of contamination
+(D-038) took the queue from discarding 13 of 18 real candidates to 1, on its
+own - the 87%-reduction original rule set was efficient only because it was
+throwing away three-quarters of the signals that needed a human to look at
+them. Macro F1 agrees here (45.3% -> 46.7%), for once tracking the same
+direction as the real number.
+
+**D-039 is where the two metrics cleanly diverge.** The implied-radius check
+changed zero verdicts among the 18 `PC`/`APC` signals -
+`needs_review_discarded` is 1/18 before and after, the identical
+`TOI-5605.01`. D-042 subsequently established that this one discard is not
+even a real error: the pinned `PC` label is stale, and the target has a
+same-period confirmed match in the live archive today. Net real error count
+after D-038+D-039: zero. Over the same step, macro F1 fell 46.7% -> 40.0%,
+and the reason was already on record when D-039 was written -
+`_macro` averages only classes with a defined F1, and `FP`'s F1 was
+undefined before that change - an averaging artefact of the metric, not a
+change in how many real candidates the pipeline throws away. Read together
+with D-038, the combined figure reported during that session (45.3% -> 40.0%
+across both decisions) is the same inversion stated cumulatively: the number
+that was the scorecard moved backward while the pipeline got strictly safer.
+
+**D-041 is the only decision in this log that is net-negative on the binary
+metric.** Wiring the instrumental check into both triage paths bought 7.4
+points of additional queue reduction (35.2% -> 42.6%) at the cost of two more
+real `PC`/`APC` candidates discarded as resolved - `TOI-311.01` and
+`TOI-6323.01` - on top of the pre-existing `TOI-5605.01` archive-drift case.
+Macro F1 also fell here (40.0% -> 34.7%), but the two metrics agreeing on
+this one step is not evidence that F1 tracks discards in general: D-039
+shows the identical metric giving the opposite answer, on the same
+benchmark, one decision earlier, for a real improvement.
+
+**Consequence.** Macro F1 is not a safe stand-in for whether this pipeline
+is discarding real candidates, and reporting it as the headline number risks
+reading a safety improvement as a regression (D-039) or missing that a
+change is net-negative because a coincidentally-falling F1 doesn't say why
+on its own. From here forward, a change to `derive_verdict` or a check wired
+into it is judged first against `needs_review_discarded`/`score_binary`;
+macro F1 remains a secondary per-class diagnostic, not the number a decision
+is accepted or rejected on. This decision does not itself revisit
+`FLAGGED_FRACTION_ALERT` or any other threshold.
+
+**Status.** Active as a documented methodology finding. No code, threshold,
+or pinned benchmark changed by this decision; `score_binary`/`BinaryReport`
+(`core/metrics.py`) and the four run files named above are the reproducible
+source for both tables.

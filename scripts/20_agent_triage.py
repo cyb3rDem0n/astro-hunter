@@ -39,11 +39,14 @@ PRICING = {
     "claude-opus-5": (15.0, 75.0),
 }
 
+# check_instrumental_coincidence (D-041) intentionally excluded - disabled on
+# both paths per D-043 (checks parity, D-035). The MCP tool itself
+# (astro_hunter.mcp.server.check_instrumental_coincidence) is untouched; it is
+# simply not offered to the agent here.
 TOOL_FUNCTIONS = {
     "check_confirmed_planets": mcp_server.check_confirmed_planets,
     "check_aperture_contamination": mcp_server.check_aperture_contamination,
     "check_period_relation": mcp_server.check_period_relation,
-    "check_instrumental_coincidence": mcp_server.check_instrumental_coincidence,
 }
 
 
@@ -127,7 +130,10 @@ def main() -> None:
     import anthropic
     client = anthropic.Anthropic()
 
-    schemas = anthropic_tool_schemas(asyncio.run(mcp_server.mcp.list_tools()))
+    schemas = [
+        s for s in anthropic_tool_schemas(asyncio.run(mcp_server.mcp.list_tools()))
+        if s["name"] in TOOL_FUNCTIONS
+    ]
 
     results, total_cost = [], 0.0
 

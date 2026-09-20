@@ -95,24 +95,8 @@ Method:
    harmonic means the same planet. An UNRELATED period means the star is known
    but this signal is not accounted for - that is a candidate additional
    planet, which is more interesting, not less.
-3. Check instrumental coincidence when the signal has a target_id and an
-   epoch. A periodic match to spacecraft events or to the gaps between
-   observations can look exactly like a periodic transit to a blind search.
-4. Check the aperture for contaminating sources when a depth is available.
-5. Submit a verdict.
-
-HOW TO READ THE INSTRUMENTAL CHECK.
-
-'assessed: false' means the check could not run at all - no target_id, or
-TESS never observed this target at 2-minute cadence. This is NOT evidence the
-signal is clean; it means nothing was checked. Do not conclude 'instrumental'
-from it, and do not let it push you toward any other verdict either - treat
-it exactly like an unreachable archive.
-
-When assessed, a high flagged_fraction (cadences flagged by the spacecraft's
-own quality bits) or most predicted transits landing in observing gaps points
-toward 'instrumental'. Neither on its own is a verdict for you to compute a
-threshold on - read the finding text, which already states what it means.
+3. Check the aperture for contaminating sources when a depth is available.
+4. Submit a verdict.
 
 HOW TO READ THE APERTURE CHECK. This is the step most easily misread.
 

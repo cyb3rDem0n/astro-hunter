@@ -13,17 +13,18 @@ Symmetric to `scripts/20_agent_triage.py`, but calls no model: it runs
 **Checks parity is mandatory (D-035).** This script must wire exactly the
 tools `scripts/20_agent_triage.py` exposes to the agent, and no more: a check
 added to one path without the other makes the comparison partly measure
-evidence access instead of judgement. That set is now three
-(`crossmatch_confirmed`, `crossmatch_neighbours`,
-`check_instrumental_coincidence`, D-041) - `check_instrumental_coincidence`
-only produces a verdict-relevant result for a target with a cached TESS
-light curve (D-040); the rest is a safe `assessed: false`, never silently
-read as "clean".
+evidence access instead of judgement. That set is currently two
+(`crossmatch_confirmed`, `crossmatch_neighbours`).
+`check_instrumental_coincidence` (D-041) was wired here too but is disabled
+on both paths as of D-043: measured against the binary safety metric, it was
+the only intervention in the log that discarded more real candidates than it
+started with, for a 25%-precision check. The implementation
+(`domains/exoplanets/photometry/tess.py:check_instrumental_coincidence`) is
+untouched and still tested - only this script's use of it was removed.
 
 Makes real archive queries against the NASA Exoplanet Archive and Gaia DR3.
-The instrumental check itself makes no MAST query for a target already in
-the disk cache. `scripts/30_compare_verdicts.py`, which reads this script's
-output, does not query anything.
+`scripts/30_compare_verdicts.py`, which reads this script's output, does not
+query anything.
 """
 
 import argparse
@@ -35,19 +36,18 @@ from pathlib import Path
 from astro_hunter.core.evidence import build_dossier
 from astro_hunter.domains.exoplanets.catalogs import crossmatch_confirmed
 from astro_hunter.domains.exoplanets.neighbours import crossmatch_neighbours
-from astro_hunter.domains.exoplanets.photometry.tess import check_instrumental_coincidence
 from astro_hunter.sources.toi import load_benchmark
 
 ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK = ROOT / "tests" / "fixtures" / "toi_benchmark.csv"
 
-# Exactly what 20_agent_triage.py exposes to the agent (D-035, D-041; see
-# module docstring). Keep in sync with astro_hunter.mcp.server's tool
-# registrations.
+# Exactly what 20_agent_triage.py exposes to the agent (D-035; see module
+# docstring). Keep in sync with astro_hunter.mcp.server's tool registrations.
+# check_instrumental_coincidence (D-041) intentionally excluded - disabled on
+# both paths per D-043.
 CHECKS = {
     "confirmed_planets": crossmatch_confirmed,
     "aperture_neighbours": crossmatch_neighbours,
-    "instrumental_coincidence": check_instrumental_coincidence,
 }
 
 

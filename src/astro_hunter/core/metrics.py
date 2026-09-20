@@ -71,6 +71,12 @@ SINGLE_CLASS_VERDICT: dict[str, Verdict] = {
     "INSUFFICIENT": Verdict.INSUFFICIENT,
 }
 
+# The same six dispositions collapse to two groups on the truth side - resolved
+# needs no human attention (KP, CP, FA, FP), needs-review does (PC, APC) - the
+# identical split `Verdict.is_resolved` already encodes on the verdict side.
+NEEDS_REVIEW_DISPOSITIONS: frozenset[str] = frozenset({"PC", "APC"})
+RESOLVED_DISPOSITIONS: frozenset[str] = frozenset({"KP", "CP", "FA", "FP"})
+
 # --- D-015: pinned TOI snapshot, 2026-09-10 (docs/toi-schema-snapshot.md) ----
 # Real catalog proportions, not the stratified sample's - the majority
 # baseline must reflect what "always guess the biggest class" actually scores
@@ -178,13 +184,14 @@ def _macro(values: list[float | None]) -> float | None:
     return sum(defined) / len(defined) if defined else None
 
 
-def score(records: list[VerdictRecord]) -> Report:
-    """Confusion matrix and per-class precision/recall/F1 for one path.
+def _split_scorable(
+    records: list[VerdictRecord],
+) -> tuple[list[VerdictRecord], int, Counter]:
+    """Three-way split shared by every scoring function.
 
-    Splits `records` three ways before scoring anything: a null/unlabelled
-    disposition is not a class (D-015) and a missing verdict is not a
-    classification error (D-031-adjacent reasoning, applied here) - both are
-    counted, neither is scored.
+    A null/unlabelled disposition is not a class (D-015) and a missing
+    verdict is not a classification error (D-031-adjacent reasoning, applied
+    here) - both are counted, neither is scored.
     """
     no_verdict: Counter = Counter()
     excluded_null = 0
@@ -198,6 +205,13 @@ def score(records: list[VerdictRecord]) -> Report:
             no_verdict[r.stop_reason or "unknown"] += 1
             continue
         scored_records.append(r)
+
+    return scored_records, excluded_null, no_verdict
+
+
+def score(records: list[VerdictRecord]) -> Report:
+    """Confusion matrix and per-class precision/recall/F1 for one path."""
+    scored_records, excluded_null, no_verdict = _split_scorable(records)
 
     confusion: dict[str, Counter] = {cls: Counter() for cls in TRUE_CLASSES}
     for r in scored_records:
@@ -232,12 +246,67 @@ def score(records: list[VerdictRecord]) -> Report:
     )
 
 
+@dataclass(frozen=True)
+class BinaryReport:
+    """Resolved-vs-needs-review, alongside the per-class `Report`, not instead
+    of it (D-0xx). Two numbers only, because only two matter here.
+
+    `queue_reduction` is an efficiency number: the fraction of the queue a
+    resolved verdict removes from human attention. It says nothing about
+    whether that removal was correct.
+
+    `needs_review_discarded` is the safety constraint: a true `PC`/`APC`
+    signal (`NEEDS_REVIEW_DISPOSITIONS`) whose verdict came back resolved
+    (`Verdict.is_resolved`) anyway, and would therefore leave the queue with
+    no human ever looking at it. A high `queue_reduction` next to a non-zero
+    `needs_review_discarded` is not a result to be satisfied with: efficient
+    is not the same as safe, and this is the number that says which one a
+    result actually is.
+    """
+
+    queue_reduction: float | None  # resolved verdicts / scored, whole path
+    needs_review_total: int  # true PC/APC signals scored
+    needs_review_discarded: int  # of those, verdict.is_resolved anyway
+    discarded_signal_ids: tuple[str, ...]
+    scored: int
+    excluded_null: int
+    no_verdict: Counter
+
+
+def score_binary(records: list[VerdictRecord]) -> BinaryReport:
+    """Collapse the six dispositions/verdicts to resolved-vs-needs-review.
+
+    Same exclusion rules as `score` (`_split_scorable`): a null disposition is
+    not a class, a missing verdict is not a classification error. Applied
+    once, shared by both views of the same records.
+    """
+    scored_records, excluded_null, no_verdict = _split_scorable(records)
+
+    resolved_count = sum(1 for r in scored_records if r.verdict.is_resolved)
+    queue_reduction = resolved_count / len(scored_records) if scored_records else None
+
+    needs_review = [r for r in scored_records if r.true_disposition in NEEDS_REVIEW_DISPOSITIONS]
+    discarded = [r for r in needs_review if r.verdict.is_resolved]
+
+    return BinaryReport(
+        queue_reduction=queue_reduction,
+        needs_review_total=len(needs_review),
+        needs_review_discarded=len(discarded),
+        discarded_signal_ids=tuple(r.signal_id for r in discarded),
+        scored=len(scored_records),
+        excluded_null=excluded_null,
+        no_verdict=no_verdict,
+    )
+
+
 @dataclass
 class ComparisonReport:
     """Both paths, scored the same way, for a side-by-side report."""
 
     agent: Report
     rule: Report
+    agent_binary: BinaryReport
+    rule_binary: BinaryReport
     majority_baseline_share: float = field(default_factory=majority_baseline_share)
     majority_baseline_class: str = field(default_factory=majority_baseline_class)
 
@@ -246,7 +315,12 @@ def compare(
     agent_records: list[VerdictRecord], rule_records: list[VerdictRecord]
 ) -> ComparisonReport:
     """Score both paths and package them for `format_report`."""
-    return ComparisonReport(agent=score(agent_records), rule=score(rule_records))
+    return ComparisonReport(
+        agent=score(agent_records),
+        rule=score(rule_records),
+        agent_binary=score_binary(agent_records),
+        rule_binary=score_binary(rule_records),
+    )
 
 
 # --- reporting -------------------------------------------------------------------
@@ -319,6 +393,21 @@ def format_report(report: ComparisonReport) -> str:
             ),
         )
     )
+    lines.append("")
+
+    lines.append("Binary (resolved vs. needs-review, alongside the per-class table above):")
+    lines.append("  KP/CP/FA/FP -> resolved, no human attention needed; PC/APC -> needs-review.")
+    for label, binary in (("agent", report.agent_binary), ("rule", report.rule_binary)):
+        lines.append(f"  {label}: queue reduction {_pct(binary.queue_reduction)}")
+        lines.append(
+            f"    needs-review signals discarded as resolved: "
+            f"{binary.needs_review_discarded}/{binary.needs_review_total}"
+            + (
+                f" ({', '.join(binary.discarded_signal_ids)})"
+                if binary.discarded_signal_ids
+                else ""
+            )
+        )
     lines.append("")
 
     for label, side in (("agent", report.agent), ("rule", report.rule)):

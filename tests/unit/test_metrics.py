@@ -11,6 +11,7 @@ from astro_hunter.core.metrics import (
     majority_baseline_share,
     record_from_dict,
     score,
+    score_binary,
 )
 from astro_hunter.core.models import Verdict
 
@@ -158,6 +159,65 @@ def test_a_class_with_no_support_is_excluded_from_the_macro_average():
     assert report.per_class["FP"].recall is None
     # only KNOWN and INTERESTING have support; both are perfect
     assert report.macro_recall == pytest.approx(1.0)
+
+
+# --- binary evaluation: resolved vs. needs-review, alongside score() -----------
+
+
+def test_queue_reduction_is_the_share_of_resolved_verdicts():
+    records = [
+        rec("a", "KP", Verdict.KNOWN),  # resolved
+        rec("b", "FA", Verdict.INSTRUMENTAL),  # resolved
+        rec("c", "PC", Verdict.INTERESTING),  # needs-review, correctly kept
+        rec("d", "APC", Verdict.INSUFFICIENT),  # needs-review, correctly kept
+    ]
+    report = score_binary(records)
+    assert report.queue_reduction == pytest.approx(0.5)
+
+
+def test_a_needs_review_signal_resolved_by_error_is_counted_as_discarded():
+    """The safety constraint: a true PC/APC that comes back resolved would
+    leave the queue with no human ever looking at it."""
+    records = [
+        rec("a", "PC", Verdict.CONTAMINATED),  # wrong AND dangerous: discarded
+        rec("b", "APC", Verdict.INTERESTING),  # wrong, but still needs-review
+    ]
+    report = score_binary(records)
+    assert report.needs_review_total == 2
+    assert report.needs_review_discarded == 1
+    assert report.discarded_signal_ids == ("a",)
+
+
+def test_a_correctly_resolved_signal_does_not_count_as_discarded():
+    records = [rec("a", "KP", Verdict.KNOWN), rec("b", "FP", Verdict.EXPLAINED)]
+    report = score_binary(records)
+    assert report.needs_review_total == 0
+    assert report.needs_review_discarded == 0
+
+
+def test_binary_evaluation_shares_scores_exclusion_rules_with_score():
+    """A null disposition is excluded, a missing verdict is not a
+    classification error - identical to `score`, not a second definition."""
+    records = [
+        rec("a", None, Verdict.INTERESTING),
+        rec("b", "PC", None, stop_reason="max_iterations"),
+        rec("c", "PC", Verdict.INTERESTING),
+    ]
+    report = score_binary(records)
+    assert report.excluded_null == 1
+    assert report.no_verdict == {"max_iterations": 1}
+    assert report.scored == 1
+    assert report.needs_review_total == 1
+
+
+def test_binary_report_appears_alongside_the_per_class_report_not_instead():
+    report = compare([], [])
+    assert report.agent_binary is not None
+    assert report.rule_binary is not None
+    text = format_report(report)
+    assert "needs-review signals discarded as resolved" in text
+    # the per-class table is still there
+    assert "class" in text and "macro avg" in text
 
 
 # --- adapters --------------------------------------------------------------------

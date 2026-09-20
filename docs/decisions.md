@@ -2051,3 +2051,98 @@ is accepted or rejected on. This decision does not itself revisit
 or pinned benchmark changed by this decision; `score_binary`/`BinaryReport`
 (`core/metrics.py`) and the four run files named above are the reproducible
 source for both tables.
+
+---
+
+## D-044 — Rule 4b (target identification doubtful) requires a neighbour at least 3x brighter, not merely brighter
+
+**Context.** Rule 4b (`core/evidence.py`, fed by
+`domains/exoplanets/neighbours.py:crossmatch_neighbours`) flagged
+`target_identification_doubtful` on any neighbour with a lower Gaia G
+magnitude than the assumed target, however small the margin, and routed the
+signal straight to `INSUFFICIENT` - the same unconditional-trigger shape
+D-038 already fixed once for rule 5's contamination check, on a different
+input.
+
+**Decision.** `domains/exoplanets/neighbours.py` gains
+`IDENTIFICATION_DOUBTFUL_FLUX_RATIO = 3.0`: a neighbour must contribute at
+least three times the target's own flux (~1.19 magnitudes) before it makes
+the identification itself doubtful. Below that margin the neighbour is still
+counted and reported (`brighter_neighbours` in the main aperture evidence is
+unaffected - this is informational, not a rule input), but it no longer sets
+`target_identification_doubtful`, and rule 4b no longer fires on it.
+
+**The threshold is a statement about TESS's optics, not a fit to this
+benchmark.** A TESS pixel is ~21 arcsec across and the point-spread function
+is several arcsec wide; within a 60 arcsec aperture, two stars separated by
+under roughly a magnitude in brightness are not a real question of "which
+one is the target" - photometrically they are close enough that either could
+plausibly be the source, which is exactly the ambiguity aperture photometry
+cannot resolve on its own. A neighbour must clearly dominate the aperture,
+not merely edge out the target on paper, before the position can be said to
+have "probably resolved to the wrong star." 3x in flux is the point past
+which a neighbour is unambiguously the dominant source rather than a
+comparably-bright companion.
+
+**The 54-signal baseline confirms this rather than motivating it.** Measured
+live (NASA Exoplanet Archive + Gaia DR3, no MAST, 2026-09-20), the three
+signals whose brightest neighbour clears the new margin - `TOI-5694.01`
+(APC, 8.18x), `TOI-4858.01` (FP, 12.99x), `TOI-6656.01` (FA, 105.83x) - are
+exactly the cases where a dominant contaminant is physically plausible. The
+one real candidate the unconditional rule had caught, `TOI-6625.01` (PC),
+sat at 1.34x - inside the same range as two independently **confirmed**
+planets in this same baseline, `TOI-7856.01` (1.01x) and `TOI-519.01`
+(1.12x), whose own brighter-but-not-dominant neighbours never reach rule 4b
+at all, because a confirmed-planet catalogue match resolves them first. That
+two real, confirmed planets carry a neighbour in the same range rule 4b used
+to treat as disqualifying is direct evidence the old, unconditional trigger
+was catching the ordinary case, not the anomalous one. This is confirmation
+on three triggering signals and two counter-examples - not, on its own, a
+statistically established boundary; the boundary is set by the aperture
+argument above, and would stand even if this particular 54-signal sample
+looked less clean.
+
+**Measured effect on the two binary numbers (`score_binary`, D-043),
+`runs/rule_D043_after.json` -> `runs/rule_D044_after.json`, same 54 signals,
+live, no MAST:**
+
+```
+                    queue reduction   needs-review discarded
+before (D-043 state)     35.2%             1/18  (TOI-5605.01)
+after (this decision)    37.0%             2/18  (+TOI-6625.01)
+```
+
+**This is not an improvement on the metric D-043 established as primary,
+and it is reported as such rather than smoothed over.** `TOI-6625.01` no
+longer stops at rule 4b, but does not reach `INTERESTING` either: it falls
+through to D-039's implied-radius rule (5b), which - using this target's
+actual catalogued stellar radius (1.61 R_sun), not the coarse ppm-only
+proxy - computes a dilution-corrected depth of 41,754 ppm and an implied
+eclipsing-body radius of 3.20 R_Jup, above the 2 R_Jup planet ceiling, and
+returns `EXPLAINED`. That computation is independent of this decision's
+margin and was not touched by it; it fires here only because rule 4b no
+longer intercepts the signal first.
+
+**Worth flagging, not resolving here.** `TOI-6625.01`'s aperture is
+unusually crowded - 15 Gaia sources within 60 arcsec, the target holding
+only 21.2% of the flux - yet no single neighbour clears even the old
+unconditional bar by much (1.34x) let alone the new 3x margin. Severe
+*cumulative* contamination from many faint sources, with no single dominant
+neighbour, is a case rule 4b was never built to catch (it looks at the
+single brightest neighbour only), and this decision does not address it.
+Whether D-039's implied-radius computation should itself account for
+aggregate dilution confidence, or whether `TOI-6625.01`'s pinned `PC` label
+is itself out of date the way D-042 found for three other signals, is not
+decided here - left OPEN per that same precedent, not auto-resolved.
+
+**Status.** Active. Implemented in `domains/exoplanets/neighbours.py`
+(`IDENTIFICATION_DOUBTFUL_FLUX_RATIO`, `crossmatch_neighbours`).
+`core/evidence.py` rule 4b is unchanged - it still
+just reads `target_identification_doubtful` off the evidence, which is now a
+margin-gated claim rather than an unconditional one. Covered by two new
+regression tests in `tests/unit/test_neighbours.py` (a neighbour just under
+the margin does not trigger the flag; a neighbour just past it does), plus
+the existing test at the far end of the range. `runs/rule_D043_after.json`
+(pre-change) and `runs/rule_D044_after.json` (post-change) are both
+committed, so the before/after comparison stays reproducible from the two
+files rather than only from this table.

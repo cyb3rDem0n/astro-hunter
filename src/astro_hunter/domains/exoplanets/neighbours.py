@@ -67,6 +67,21 @@ MAX_NEIGHBOURS_REPORTED = 15
 # downstream is then computed against the wrong star.
 DEFAULT_TARGET_RADIUS_ARCSEC = TESS_PIXEL_ARCSEC / 2
 
+# A neighbour must contribute at least this many times the target's own flux
+# to make the star identification itself doubtful (D-044) - merely being
+# nominally brighter is not enough. 3x in flux is ~1.19 magnitudes: inside a
+# TESS aperture (pixels ~21 arcsec across, a PSF several arcsec wide) two
+# stars this close in brightness are not genuinely in question as to which
+# one is the target - only a source that clearly dominates the aperture can
+# plausibly have absorbed the identification. Confirmed on the pinned
+# 54-signal baseline, not the origin of the threshold (D-044): the only
+# signals with a neighbour past this margin (8.18x-105.83x) were a true APC,
+# FA and FP, while the one real candidate the unconditional check had
+# flagged sat at 1.34x - the same range as two independently confirmed
+# planets (1.01x, 1.12x) whose own neighbours never reach this check at all,
+# intercepted earlier by a catalogue match.
+IDENTIFICATION_DOUBTFUL_FLUX_RATIO = 3.0
+
 
 class CatalogUnavailable(RuntimeError):
     """No endpoint answered. Distinct from 'no neighbours found'."""
@@ -354,18 +369,20 @@ def crossmatch_neighbours(
         },
     )]
 
-    if brighter:
+    doubtful = [n for n in brighter if n["flux_ratio"] >= IDENTIFICATION_DOUBTFUL_FLUX_RATIO]
+    if doubtful:
         evidence.append(Evidence(
             kind=EvidenceKind.NEIGHBOUR,
             source=gaia_source,
             summary=(
-                f"{len(brighter)} source(s) in the aperture are brighter than the "
-                f"assumed target: the position may have resolved to the wrong star"
+                f"{len(doubtful)} source(s) in the aperture are at least "
+                f"{IDENTIFICATION_DOUBTFUL_FLUX_RATIO:g}x brighter than the assumed "
+                f"target: the position may have resolved to the wrong star"
             ),
             retrieved_at=retrieved,
-            payload={"brighter_neighbours": len(brighter),
+            payload={"brighter_neighbours": len(doubtful),
                      "target_g_mag": target["g_mag"],
-                     "brightest_neighbour_g_mag": min(n["g_mag"] for n in brighter),
+                     "brightest_neighbour_g_mag": min(n["g_mag"] for n in doubtful),
                      "target_identification_doubtful": True},
         ))
 

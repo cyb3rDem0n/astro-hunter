@@ -265,6 +265,27 @@ def test_a_brighter_neighbour_raises_a_misidentification_alert():
     assert any(e.payload.get("target_identification_doubtful") for e in ev)
 
 
+def test_a_marginally_brighter_neighbour_does_not_raise_misidentification():
+    """D-044: nominally brighter is not enough - a neighbour 0.75 mag brighter
+    (~2x in flux, under the 3x margin) is not a real question about which
+    star is the target in a TESS aperture."""
+    rows = [src(POS["ra_deg"], POS["dec_deg"], 14.0, "assumed-target"),
+            src(POS["ra_deg"] + 0.002, POS["dec_deg"], 13.25, "slightly-brighter")]
+    ev = crossmatch_neighbours(signal(depth_ppm=900), service=FakeService(rows))
+    assert not any(e.payload.get("target_identification_doubtful") for e in ev)
+    # still counted as nominally brighter in the main evidence - only the
+    # misidentification alert itself is gated by the margin.
+    assert ev[0].payload["brighter_neighbours"] == 1
+
+
+def test_a_neighbour_past_the_margin_raises_misidentification():
+    """D-044: 1.3 mag brighter (~3.3x in flux) clears the margin."""
+    rows = [src(POS["ra_deg"], POS["dec_deg"], 14.0, "assumed-target"),
+            src(POS["ra_deg"] + 0.002, POS["dec_deg"], 12.7, "past-the-margin")]
+    ev = crossmatch_neighbours(signal(depth_ppm=900), service=FakeService(rows))
+    assert any(e.payload.get("target_identification_doubtful") for e in ev)
+
+
 class RecordingService(FakeService):
     """Keeps the ADQL it was handed, so the query itself can be asserted on."""
 

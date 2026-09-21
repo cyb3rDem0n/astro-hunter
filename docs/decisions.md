@@ -2214,3 +2214,118 @@ the same way `score_binary` was used for the D-043/D-044 comparisons, not
 (yet) part of the side-by-side agent/rule report. Numbers above are computed
 on the six committed run files (`runs/rule_baseline.json` through
 `runs/rule_D044_after.json`), no network.
+
+---
+
+## D-046 — Odd/even transit-depth check: verified, wired to both paths, a null result on the pinned benchmark
+
+**Context.** D-038 named the actual `EXPLAINED` mechanism the rule engine
+was missing - odd/even transit-depth comparison - and left it out of scope.
+This decision closes that gap: fold the light curve on the signal's own
+period, split predicted transits by cycle parity, compare mean depth per
+group against a local out-of-transit baseline. A significant difference is
+direct photometric evidence of an eclipsing binary at twice the search
+period, independent of the aperture-crowding math rules 5/5b/5c already use.
+
+**Decision.** `domains/exoplanets/oddeven.py` (acquisition-free, the same
+split `instrumental.py` uses) implements the fold and the statistics;
+`photometry/tess.py:check_odd_even_depth` wires it to the on-disk
+light-curve cache, the same pattern as `check_instrumental_coincidence`
+(D-041) but through `download_tess_lightcurve`'s existing cleaning, since
+this check needs flux, not just time/quality. `core/evidence.py` gains rule
+5d: `Verdict.EXPLAINED` at confidence 0.7 when the odd/even difference is
+significant. Wired into both triage paths for checks parity (D-035):
+`scripts/11_rule_triage.py`'s `CHECKS` and a new MCP tool
+(`check_odd_even_depth`) in `scripts/20_agent_triage.py`'s `TOOL_FUNCTIONS`,
+with matching guidance in `core/agent.py`'s system prompt.
+
+**Two thresholds, both stated rather than left implicit.**
+`MIN_TRANSITS_PER_GROUP = 3` - a group's mean and spread mean nothing below
+three points (two gives one degree of freedom for the spread, too unstable
+to trust); below it the check returns `assessed: False`, not a weak
+significant/not-significant call. `SIGNIFICANCE_SIGMA = 3.0` - the same
+odd-even significance convention TESS/Kepler Data Validation reports
+already use.
+
+**Implementation was verified, not assumed correct.** Two things surfaced
+while writing the tests, both recorded because they shaped confidence in
+the result below, not because they are interesting on their own:
+
+- A synthetic-light-curve test generator bug, not a code bug: the observed
+  time window included one predicted transit cycle (index -1, or one past
+  the last simulated cycle) that the generator never actually injected a
+  dip for. `check_odd_even_depth` correctly folded on every predicted
+  transit inside the observed range - including that phantom one - and
+  correctly measured it as a near-zero-depth transit, which correctly
+  polluted its parity group and suppressed the significance the test
+  expected. The fix was tightening the test's observed-time margin so the
+  simulated range never includes an un-simulated predicted transit;
+  `check_odd_even_depth` itself was not touched. Caught before this decision
+  was written, not after - the kind of check this project's "run the tests"
+  step exists for, worth naming because it is exactly the failure mode a
+  less careful synthetic test would have hidden rather than caught.
+- The zero-scatter edge case: two groups with identical, noiseless
+  per-transit depths give a combined standard error of exactly zero. Dividing
+  a real mean difference by zero was not read as "no evidence" (which a
+  naive `else 0.0` would have silently done) - zero measurement noise with
+  nothing left to explain a real difference is unbounded confidence, not
+  none, so `oddeven.py` returns `sigma = inf` and `significant = True` in
+  that case, tested directly (`test_zero_noise_with_a_real_difference_is_maximally_significant`).
+
+**Measured on the pinned 54-signal baseline, live (NASA Exoplanet Archive +
+Gaia DR3 TAP, reading already-cached FITS for the light curves, no new MAST
+downloads), 2026-09-21 (`runs/rule_D046_after.json`, `--from-run
+runs/rule_D044_after.json`): zero verdicts changed from the D-044 state.**
+
+Of the 9 pinned `FP` signals:
+
+- **3 of 9 have no SPOC 2-minute product at all** (`TOI-1578.01`,
+  `TOI-3164.01`, `TOI-6952.01` - the same three D-040 already named) -
+  `assessed: False`, structurally unreachable by this check regardless of
+  any threshold.
+- **1 of 9 is assessed but below `MIN_TRANSITS_PER_GROUP`**
+  (`TOI-2168.01`: 1 odd transit, 0 even) - also structurally unreachable
+  here, for a different reason than the three above, but the same outcome:
+  `assessed: False`, not a weak call.
+- **5 of 9 were assessed and none crossed 3-sigma**: `TOI-1770.01` (0.3σ),
+  `TOI-3712.01` (1.1σ), `TOI-4367.01` (1.5σ), `TOI-914.01` (2.3σ),
+  `TOI-4858.01` (2.4σ, the closest). No odd/even mismatch in this sample is
+  large enough, relative to its own measurement noise, to call significant.
+
+**The `FP` recall gap D-038 identified is not closed by this check on this
+benchmark.** `FP` recall remains 11.1% (1 of 9, via D-039's implied-radius
+path on `TOI-3164.01` - unrelated to this decision, since that signal has no
+2-minute product for odd/even to even attempt). Queue reduction (37.0%),
+needs-review discarded (2/18), and precision@5/10/20 (60%/80%/45%) are all
+unchanged from D-044, because nothing this check evaluated changed a
+verdict. This is reported as a null result, not reframed as a partial win.
+
+**`SIGNIFICANCE_SIGMA` is not being lowered to manufacture a result.**
+`TOI-4858.01` at 2.4σ is the closest miss, and it would be straightforward
+to relabel it `EXPLAINED` by moving the threshold to, say, 2.0. That is
+exactly the logic D-038 already rejected for a different threshold -
+loosening a boundary until it catches the case in front of you, rather than
+because the boundary itself is wrong, produces a rule that looks better on
+this benchmark and worse on the next one. 3-sigma is already the minimum
+defensible convention for this test, not an arbitrary starting point to
+negotiate down from; it is not revisited here.
+
+**Consequence.** This check earns its place on the strength of what it
+tests, not on what it found here: it gives the rule engine an actual,
+grounded path to on-target-eclipsing-binary `EXPLAINED` verdicts, verified
+correct on synthetic data with a known answer, wired symmetrically per
+D-035. That none of the 9 pinned `FP` signals happen to cross its threshold
+is a fact about this 54-signal sample - dominated by cadence coverage (4 of
+9 structurally unreachable) more than by the statistic itself - not a
+defect in the check.
+
+**Status.** Active. Implemented in `domains/exoplanets/oddeven.py` (new),
+`photometry/tess.py:check_odd_even_depth`, `core/evidence.py` (rule 5d),
+`mcp/server.py:check_odd_even_depth`, wired into
+`scripts/11_rule_triage.py` and `scripts/20_agent_triage.py`. Covered by
+unit tests in `tests/unit/test_oddeven.py` (the fold, the significance
+statistic, the zero-scatter edge case, the minimum-transits gate),
+`tests/unit/test_tess.py` (the acquisition wiring), `tests/unit/test_evidence.py`
+(rule 5d) and `tests/unit/test_mcp_server.py` (the tool). `runs/rule_D046_after.json`
+is committed alongside `runs/rule_D044_after.json` so the null result stays
+reproducible from the two files rather than only from this table.

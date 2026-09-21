@@ -19,6 +19,7 @@ def test_the_expected_tools_are_registered():
         "check_aperture_contamination",
         "check_period_relation",
         "check_instrumental_coincidence",
+        "check_odd_even_depth",
     }
 
 
@@ -158,4 +159,57 @@ def test_an_assessed_result_is_flattened_to_a_small_dict(monkeypatch):
     assert result["observed_transits"] == 6
     assert result["quality_flags_available"] is True
     assert "per_transit" not in result
+    assert len(result["findings"]) == 1
+
+
+# --- check_odd_even_depth (D-038) -----------------------------------------------
+
+def test_odd_even_unassessable_target_says_so_not_clean(monkeypatch):
+    """Same doctrine as check_instrumental_coincidence: unreachable is not
+    clean."""
+    from datetime import UTC, datetime
+
+    from astro_hunter.core.models import Evidence, EvidenceKind
+
+    monkeypatch.setattr(tess, "check_odd_even_depth", lambda *a, **k: [
+        Evidence(kind=EvidenceKind.DERIVED, source="light curve (odd/even depth)",
+                 summary="no SPOC 2-minute product for TIC 1; odd/even depth "
+                         "not assessable",
+                 retrieved_at=datetime.now(UTC),
+                 payload={"assessed": False, "available_2min": False})
+    ])
+    result = S.check_odd_even_depth(
+        target_id="TIC 1", epoch_btjd=1.5, period_days=6.27, duration_hours=2.8,
+    )
+    assert result == {
+        "assessed": False,
+        "finding": "no SPOC 2-minute product for TIC 1; odd/even depth "
+                   "not assessable",
+    }
+
+
+def test_odd_even_assessed_result_is_flattened_to_a_small_dict(monkeypatch):
+    from datetime import UTC, datetime
+
+    from astro_hunter.core.models import Evidence, EvidenceKind
+
+    monkeypatch.setattr(tess, "check_odd_even_depth", lambda *a, **k: [
+        Evidence(kind=EvidenceKind.DERIVED, source="light curve (odd/even depth)",
+                 summary="odd-transit depth 20000 ppm vs even-transit depth "
+                         "10000 ppm (5 vs 5 transits): 8.4-sigma, consistent "
+                         "with an eclipsing binary at twice the search period",
+                 retrieved_at=datetime.now(UTC),
+                 payload={"assessed": True, "odd_depth_ppm": 20000.0,
+                          "even_depth_ppm": 10000.0, "odd_transits": 5,
+                          "even_transits": 5, "odd_even_sigma": 8.4,
+                          "odd_even_significant": True})
+    ])
+    result = S.check_odd_even_depth(
+        target_id="TIC 1", epoch_btjd=1.5, period_days=6.27, duration_hours=2.8,
+    )
+    assert result["assessed"] is True
+    assert result["significant"] is True
+    assert result["odd_depth_ppm"] == 20000.0
+    assert result["even_depth_ppm"] == 10000.0
+    assert result["sigma"] == 8.4
     assert len(result["findings"]) == 1

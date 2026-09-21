@@ -206,3 +206,116 @@ def test_a_cached_sector_never_reports_a_download(tmp_path, monkeypatch):
     ev = tess.check_instrumental_coincidence(signal, tmp_path)
 
     assert not any(e.payload.get("downloaded_during_check") for e in ev)
+
+
+# --- check_odd_even_depth: wiring to download_tess_lightcurve (D-038) ----------
+#
+# check_odd_even_depth needs flux, not just time/quality, so it goes through
+# download_tess_lightcurve rather than the raw get_cached_lightcurve the
+# instrumental check reads - monkeypatched as one opaque acquisition step,
+# the same boundary the instrumental tests mock at.
+
+
+class FakeCleanLightCurve:
+    """Exposes only `.time.value` and `.flux.value` - what the odd/even glue
+    reads from `download_tess_lightcurve`'s cleaned output."""
+
+    def __init__(self, time, flux):
+        self._time = np.asarray(time, dtype=float)
+        self._flux = np.asarray(flux, dtype=float)
+
+    @property
+    def time(self):
+        return SimpleNamespace(value=self._time)
+
+    @property
+    def flux(self):
+        return SimpleNamespace(value=self._flux)
+
+
+def folded_flux(period, epoch, duration_days, n_cycles, odd_depth, even_depth):
+    t_start, t_end = epoch - 0.5, epoch + (n_cycles - 1) * period + 0.5
+    t = np.arange(t_start, t_end, CADENCE)
+    flux = np.ones_like(t)
+    for n in range(n_cycles):
+        mid = epoch + n * period
+        depth = odd_depth if n % 2 else even_depth
+        half = duration_days / 2
+        flux[(t >= mid - half) & (t <= mid + half)] -= depth
+    return t, flux
+
+
+def test_odd_even_no_target_id_is_not_assessed(tmp_path):
+    signal = Signal(signal_id="X.01", source="test", **POS)
+    ev = tess.check_odd_even_depth(signal, tmp_path)
+    assert len(ev) == 1
+    assert ev[0].payload["assessed"] is False
+
+
+def test_odd_even_no_2min_product_is_not_assessed_and_not_downloaded(tmp_path, monkeypatch):
+    monkeypatch.setattr(tess, "spoc_2min_sectors", lambda target: [])
+
+    def fail(*a, **k):
+        raise AssertionError("must not attempt a download with no sector available")
+
+    monkeypatch.setattr(tess, "download_tess_lightcurve", fail)
+
+    signal = sig(period_days=2.0, epoch=1.0, duration_hours=2.4)
+    ev = tess.check_odd_even_depth(signal, tmp_path)
+
+    assert ev[0].payload["assessed"] is False
+    assert ev[0].payload["available_2min"] is False
+
+
+def test_odd_even_mast_unavailable_propagates_as_a_check_failure(tmp_path, monkeypatch):
+    def down(target):
+        raise tess.MastUnavailable("MAST did not answer after 3 attempt(s)")
+
+    monkeypatch.setattr(tess, "spoc_2min_sectors", down)
+
+    signal = sig(period_days=2.0, epoch=1.0, duration_hours=2.4)
+    with pytest.raises(tess.MastUnavailable):
+        tess.check_odd_even_depth(signal, tmp_path)
+
+
+def test_odd_even_a_cached_sector_is_read_without_touching_mast(tmp_path, monkeypatch):
+    tic_dir = tmp_path / "TIC12345"
+    tic_dir.mkdir()
+    (tic_dir / "sector014_spoc_120s.fits").touch()
+
+    t, flux = folded_flux(2.0, 1.0, 0.1, n_cycles=8, odd_depth=0.02, even_depth=0.01)
+    fake_clean = FakeCleanLightCurve(t, flux)
+    monkeypatch.setattr(
+        tess, "download_tess_lightcurve", lambda *a, **k: (None, None, fake_clean)
+    )
+
+    def fail(*a, **k):
+        raise AssertionError("must not query MAST when a sector is already cached")
+
+    monkeypatch.setattr(tess, "spoc_2min_sectors", fail)
+
+    signal = sig(period_days=2.0, epoch=1.0, duration_hours=2.4)
+    ev = tess.check_odd_even_depth(signal, tmp_path)
+
+    assert ev[0].payload["assessed"] is True
+    assert ev[0].payload["odd_even_significant"] is True
+    assert not any(e.payload.get("downloaded_during_check") for e in ev)
+
+
+def test_odd_even_an_uncached_sector_is_downloaded_and_the_download_is_recorded(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(tess, "spoc_2min_sectors", lambda target: [14])
+
+    t, flux = folded_flux(2.0, 1.0, 0.1, n_cycles=8, odd_depth=0.02, even_depth=0.01)
+    fake_clean = FakeCleanLightCurve(t, flux)
+    monkeypatch.setattr(
+        tess, "download_tess_lightcurve", lambda *a, **k: (None, None, fake_clean)
+    )
+
+    signal = sig(period_days=2.0, epoch=1.0, duration_hours=2.4)
+    ev = tess.check_odd_even_depth(signal, tmp_path)
+
+    downloaded = [e for e in ev if e.payload.get("downloaded_during_check")]
+    assert len(downloaded) == 1
+    assert downloaded[0].payload["sector"] == 14

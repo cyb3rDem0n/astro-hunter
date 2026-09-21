@@ -31,7 +31,7 @@ from astro_hunter.core.http import (
     RetryPolicy,
 )
 from astro_hunter.core.models import Evidence, EvidenceKind
-from astro_hunter.domains.exoplanets import instrumental
+from astro_hunter.domains.exoplanets import instrumental, oddeven
 
 # Same timeout ceiling as every other archive (D-028, D-040). astroquery
 # manages its own requests.Session internally, so `core.http.TimeoutSession`
@@ -279,6 +279,72 @@ def check_instrumental_coincidence(signal, cache_root: Path | None = None) -> li
         evidence.append(Evidence(
             kind=EvidenceKind.INSTRUMENTAL_WINDOW,
             source="observing record",
+            summary=(
+                f"sector {downloaded_sector} was not cached; downloaded from "
+                f"MAST during this check"
+            ),
+            retrieved_at=retrieved,
+            payload={"downloaded_during_check": True, "sector": downloaded_sector},
+        ))
+
+    return evidence
+
+
+def check_odd_even_depth(signal, cache_root: Path | None = None) -> list[Evidence]:
+    """Evidence path for `FP` (D-017, D-038): the actual `EXPLAINED` check
+    D-038 identified and left open, wired to the on-disk light-curve cache
+    exactly like `check_instrumental_coincidence` (D-041) - same acquisition
+    pattern, same rule that `assessed: false` is never evidence of a clean
+    result. Callable as a rule-engine check and as the implementation behind
+    the MCP tool of the same name.
+
+    Needs actual flux, not just time/quality, so it goes through
+    `download_tess_lightcurve`'s existing cleaning (flux-column selection,
+    NaN removal, 6-sigma outlier clipping) rather than the raw cache read
+    `check_instrumental_coincidence` uses - the same cleaning already
+    validated for the Pi Mensae reference target (D-007), not a new
+    preprocessing choice made for this check.
+    """
+    if cache_root is None:
+        cache_root = CACHE_ROOT
+    retrieved = datetime.now(UTC)
+
+    if not signal.target_id:
+        return [Evidence(
+            kind=EvidenceKind.DERIVED,
+            source=oddeven.SOURCE,
+            summary="no target identifier on the signal; odd/even depth not assessable",
+            retrieved_at=retrieved,
+            payload={"assessed": False},
+        )]
+
+    downloaded_sector: int | None = None
+    cached = cached_2min_sectors(signal.target_id, cache_root)
+    if cached:
+        sector = cached[0]
+    else:
+        sectors = spoc_2min_sectors(signal.target_id)
+        if not sectors:
+            return [Evidence(
+                kind=EvidenceKind.DERIVED,
+                source=oddeven.SOURCE,
+                summary=(
+                    f"no SPOC 2-minute product for {signal.target_id}; "
+                    f"odd/even depth not assessable"
+                ),
+                retrieved_at=retrieved,
+                payload={"assessed": False, "available_2min": False},
+            )]
+        sector = sectors[0]
+        downloaded_sector = sector
+
+    _, _, clean = download_tess_lightcurve(signal.target_id, sector, cache_root)
+    evidence = list(oddeven.check_odd_even_depth(signal, clean.time.value, clean.flux.value))
+
+    if downloaded_sector is not None:
+        evidence.append(Evidence(
+            kind=EvidenceKind.DERIVED,
+            source=oddeven.SOURCE,
             summary=(
                 f"sector {downloaded_sector} was not cached; downloaded from "
                 f"MAST during this check"

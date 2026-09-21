@@ -96,7 +96,23 @@ Method:
    but this signal is not accounted for - that is a candidate additional
    planet, which is more interesting, not less.
 3. Check the aperture for contaminating sources when a depth is available.
-4. Submit a verdict.
+4. Check odd/even transit depth when the signal has a target_id, epoch,
+   period and duration. A significant mismatch between alternating transits
+   means an eclipsing binary at twice the search period, not a planet.
+5. Submit a verdict.
+
+HOW TO READ THE ODD/EVEN CHECK.
+
+'assessed: false' means the check could not run - no target_id, no
+duration, or TESS never observed this target at 2-minute cadence. This is
+NOT evidence the transit shape is clean; treat it exactly like an
+unreachable archive.
+
+'significant: true' means the odd- and even-transit depths differ by at
+least 3 combined standard errors - return 'explained', not 'interesting' or
+'contaminated'. Fewer than 3 usable transits in either group produces
+'assessed: false' instead of a weak call, deliberately: do not read that as
+either a pass or a fail.
 
 HOW TO READ THE APERTURE CHECK. This is the step most easily misread.
 

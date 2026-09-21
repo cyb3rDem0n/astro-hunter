@@ -225,6 +225,60 @@ def check_instrumental_coincidence(
 
 
 @mcp.tool
+def check_odd_even_depth(
+    target_id: str,
+    epoch_btjd: float,
+    period_days: float,
+    duration_hours: float | None = None,
+) -> dict:
+    """Compare transit depth on odd- vs even-numbered transits.
+
+    Uses the on-disk TESS light-curve cache (D-040), the same one
+    `check_instrumental_coincidence` reads. An eclipsing binary at the true
+    orbital period has a primary and a secondary eclipse of different
+    depths; a period search that locked onto half that period sees one
+    constant-looking dip. Folding separately on odd- and even-numbered
+    transits and comparing their mean depth is the only way to tell that
+    apart from a real, constant-depth transit.
+
+    Needs the signal's ephemeris (epoch_btjd, period_days, duration_hours)
+    and target_id (a TIC identifier) to find its light curve and fold it.
+
+    'assessed: false' means the check could not run - no target_id, no
+    duration, or TESS never observed this target at 2-minute cadence. This
+    is NOT evidence the transit shape is clean; treat it like any other
+    unreachable archive.
+
+    'significant: true' means the odd- and even-transit depths differ by at
+    least 3 combined standard errors - consistent with an eclipsing binary,
+    not a planet. Fewer than 3 usable transits in either group produces
+    'assessed: false' instead of a weak significant/not-significant call,
+    deliberately: a comparison built from too few points is not a result.
+    """
+    signal = Signal(
+        signal_id=target_id, source="mcp", ra_deg=0.0, dec_deg=0.0,
+        target_id=target_id, epoch=epoch_btjd, period_days=period_days,
+        duration_hours=duration_hours,
+    )
+    evidence = tess.check_odd_even_depth(signal)
+
+    summary = evidence[0]
+    if not summary.payload.get("assessed", True):
+        return {"assessed": False, "finding": summary.summary}
+
+    return {
+        "assessed": True,
+        "odd_depth_ppm": summary.payload.get("odd_depth_ppm"),
+        "even_depth_ppm": summary.payload.get("even_depth_ppm"),
+        "odd_transits": summary.payload.get("odd_transits"),
+        "even_transits": summary.payload.get("even_transits"),
+        "sigma": summary.payload.get("odd_even_sigma"),
+        "significant": summary.payload.get("odd_even_significant"),
+        "findings": _flatten(evidence, limit=len(evidence)),
+    }
+
+
+@mcp.tool
 def check_period_relation(candidate_period_days: float, known_period_days: float) -> dict:
     """Compare a candidate period against a known one, allowing for harmonics.
 

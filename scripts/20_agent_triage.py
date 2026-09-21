@@ -42,11 +42,13 @@ PRICING = {
 # check_instrumental_coincidence (D-041) intentionally excluded - disabled on
 # both paths per D-043 (checks parity, D-035). The MCP tool itself
 # (astro_hunter.mcp.server.check_instrumental_coincidence) is untouched; it is
-# simply not offered to the agent here.
+# simply not offered to the agent here. check_odd_even_depth is new here,
+# wired to keep parity with scripts/11_rule_triage.py's CHECKS dict.
 TOOL_FUNCTIONS = {
     "check_confirmed_planets": mcp_server.check_confirmed_planets,
     "check_aperture_contamination": mcp_server.check_aperture_contamination,
     "check_period_relation": mcp_server.check_period_relation,
+    "check_odd_even_depth": mcp_server.check_odd_even_depth,
 }
 
 

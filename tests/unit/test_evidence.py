@@ -240,6 +240,45 @@ def test_a_modest_corrected_depth_is_not_contamination():
     assert derive_verdict(d)[0] is Verdict.INTERESTING
 
 
+def test_a_significant_odd_even_difference_is_explained():
+    """D-038's gap, closed: direct photometric evidence of an eclipsing
+    binary at twice the search period."""
+    d = dossier_with(
+        ev(EvidenceKind.DERIVED, source="light curve (odd/even depth)",
+           odd_depth_ppm=20_000.0, even_depth_ppm=10_000.0,
+           odd_transits=5, even_transits=5,
+           odd_even_sigma=8.4, odd_even_significant=True),
+    )
+    verdict, confidence, why = derive_verdict(d)
+    assert verdict is Verdict.EXPLAINED
+    assert confidence == pytest.approx(0.7)
+    assert "eclipsing binary" in why
+    assert "20000" in why.replace(",", "") and "10000" in why.replace(",", "")
+
+
+def test_a_non_significant_odd_even_difference_does_not_drive_a_verdict():
+    d = dossier_with(
+        ev(EvidenceKind.DERIVED, source="light curve (odd/even depth)",
+           odd_depth_ppm=10_100.0, even_depth_ppm=10_000.0,
+           odd_transits=5, even_transits=5,
+           odd_even_sigma=0.4, odd_even_significant=False),
+    )
+    verdict, _, _ = derive_verdict(d)
+    assert verdict is not Verdict.EXPLAINED
+
+
+def test_an_unassessed_odd_even_check_does_not_drive_a_verdict():
+    """Too few transits per group produces `assessed: False` with no
+    `odd_even_significant` key - absence of that key must not be read as
+    either outcome."""
+    d = dossier_with(
+        ev(EvidenceKind.DERIVED, source="light curve (odd/even depth)",
+           odd_transits=1, even_transits=1, minimum_required_per_group=3),
+    )
+    verdict, _, _ = derive_verdict(d)
+    assert verdict is not Verdict.EXPLAINED
+
+
 def test_known_host_with_an_unrelated_period_is_interesting():
     """The case worth protecting: additional planets live in known systems."""
     d = dossier_with(ev(EvidenceKind.CATALOG_MATCH, identifier="pi Men c",

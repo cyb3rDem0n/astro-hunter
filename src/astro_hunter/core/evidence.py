@@ -230,6 +230,21 @@ def derive_verdict(dossier: Dossier) -> tuple[Verdict, float, str]:
                 f"{depth_evidence.payload['corrected_depth_ppm']:.0f} ppm is physically "
                 f"implausible for a planet"))
 
+    # 5d. Odd/even transit-depth mismatch (D-038's gap, closed here): direct
+    # photometric evidence of an eclipsing binary at twice the search
+    # period, independent of aperture crowding (5) or implied radius (5b/5c)
+    # - checked unconditionally, not as a fallback from either.
+    odd_even_evidence = next(
+        (e for e in dossier.of_kind(EvidenceKind.DERIVED)
+         if "odd_even_significant" in e.payload), None
+    )
+    if odd_even_evidence and odd_even_evidence.payload["odd_even_significant"]:
+        return (Verdict.EXPLAINED, 0.7, (
+            f"odd-transit depth {odd_even_evidence.payload['odd_depth_ppm']:.0f} ppm vs "
+            f"even-transit depth {odd_even_evidence.payload['even_depth_ppm']:.0f} ppm "
+            f"differ at {odd_even_evidence.payload['odd_even_sigma']:.1f}-sigma: "
+            f"consistent with an eclipsing binary at twice the search period"))
+
     # 6. A catalogued host, but this signal is not its known planet.
     unrelated = [
         e for e in _confirmed_matches(dossier)

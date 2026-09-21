@@ -9,6 +9,8 @@ from astro_hunter.core.metrics import (
     format_report,
     majority_baseline_class,
     majority_baseline_share,
+    order_queue,
+    precision_at_k,
     record_from_dict,
     score,
     score_binary,
@@ -16,12 +18,13 @@ from astro_hunter.core.metrics import (
 from astro_hunter.core.models import Verdict
 
 
-def rec(signal_id, true_disposition, verdict, stop_reason=None):
+def rec(signal_id, true_disposition, verdict, stop_reason=None, confidence=None):
     return VerdictRecord(
         signal_id=signal_id,
         true_disposition=true_disposition,
         verdict=verdict,
         stop_reason=stop_reason,
+        confidence=confidence,
     )
 
 
@@ -218,6 +221,91 @@ def test_binary_report_appears_alongside_the_per_class_report_not_instead():
     assert "needs-review signals discarded as resolved" in text
     # the per-class table is still there
     assert "class" in text and "macro avg" in text
+
+
+# --- queue ordering and precision@k, alongside score_binary() ------------------
+
+
+def test_needs_review_verdicts_sort_ahead_of_resolved_ones():
+    records = [
+        rec("a", "KP", Verdict.KNOWN),  # resolved
+        rec("b", "FP", Verdict.EXPLAINED),  # resolved
+        rec("c", "PC", Verdict.INTERESTING),  # needs review
+        rec("d", "APC", Verdict.INSUFFICIENT),  # needs review
+    ]
+    queue = order_queue(records)
+    ids = [r.signal_id for r in queue.records]
+    assert set(ids[:2]) == {"c", "d"}
+    assert set(ids[2:]) == {"a", "b"}
+
+
+def test_within_needs_review_sorted_by_confidence_descending():
+    records = [
+        rec("low", "PC", Verdict.INTERESTING, confidence=0.3),
+        rec("high", "PC", Verdict.INTERESTING, confidence=0.9),
+        rec("mid", "APC", Verdict.INSUFFICIENT, confidence=0.6),
+    ]
+    queue = order_queue(records)
+    assert [r.signal_id for r in queue.records] == ["high", "mid", "low"]
+
+
+def test_missing_confidence_ranks_last_within_its_own_bucket():
+    """'When available' - a missing confidence is not read as zero and does
+    not jump the queue; it just cannot claim priority over one that has a
+    value. Still ahead of every resolved verdict, though."""
+    records = [
+        rec("has_confidence", "PC", Verdict.INTERESTING, confidence=0.1),
+        rec("no_confidence", "APC", Verdict.INSUFFICIENT, confidence=None),
+        rec("resolved", "KP", Verdict.KNOWN, confidence=0.99),
+    ]
+    queue = order_queue(records)
+    assert [r.signal_id for r in queue.records] == [
+        "has_confidence",
+        "no_confidence",
+        "resolved",
+    ]
+
+
+def test_queue_ordering_shares_scores_exclusion_rules_with_score():
+    records = [
+        rec("a", None, Verdict.INTERESTING),
+        rec("b", "PC", None, stop_reason="max_iterations"),
+        rec("c", "PC", Verdict.INTERESTING),
+    ]
+    queue = order_queue(records)
+    assert queue.excluded_null == 1
+    assert queue.no_verdict == {"max_iterations": 1}
+    assert len(queue.records) == 1
+
+
+def test_precision_at_k_counts_true_pc_or_apc_in_the_top_k():
+    records = [
+        rec("a", "PC", Verdict.INTERESTING, confidence=0.9),  # worth it
+        rec("b", "FP", Verdict.INTERESTING, confidence=0.8),  # not worth it
+        rec("c", "APC", Verdict.INSUFFICIENT, confidence=0.7),  # worth it
+    ]
+    queue = order_queue(records)
+    result = precision_at_k(queue, k=3)
+    assert result.n == 3
+    assert result.true_positives == 2
+    assert result.precision == pytest.approx(2 / 3)
+
+
+def test_precision_at_k_is_computed_over_n_when_the_queue_is_shorter_than_k():
+    """Not silently reported as if k had been reached - `n` says how many
+    were actually ranked."""
+    records = [rec("a", "PC", Verdict.INTERESTING, confidence=0.5)]
+    queue = order_queue(records)
+    result = precision_at_k(queue, k=20)
+    assert result.k == 20
+    assert result.n == 1
+    assert result.precision == pytest.approx(1.0)
+
+
+def test_precision_at_k_is_none_for_an_empty_queue():
+    result = precision_at_k(order_queue([]), k=5)
+    assert result.n == 0
+    assert result.precision is None
 
 
 # --- adapters --------------------------------------------------------------------

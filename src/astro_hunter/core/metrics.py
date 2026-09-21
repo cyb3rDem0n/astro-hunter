@@ -127,6 +127,7 @@ class VerdictRecord:
     true_disposition: str | None
     verdict: Verdict | None
     stop_reason: str | None = None
+    confidence: float | None = None
 
 
 def record_from_dict(d: dict) -> VerdictRecord:
@@ -137,6 +138,7 @@ def record_from_dict(d: dict) -> VerdictRecord:
         true_disposition=d.get("true_disposition"),
         verdict=Verdict(raw_verdict) if raw_verdict else None,
         stop_reason=d.get("stop_reason"),
+        confidence=d.get("confidence"),
     )
 
 
@@ -296,6 +298,84 @@ def score_binary(records: list[VerdictRecord]) -> BinaryReport:
         scored=len(scored_records),
         excluded_null=excluded_null,
         no_verdict=no_verdict,
+    )
+
+
+@dataclass(frozen=True)
+class OrderedQueue:
+    """Scored records ranked the way a reviewer would actually work through
+    them - alongside `score_binary`, not instead of it (D-0xx): that reports
+    how many needs-review signals get discarded; this asks, of what is left
+    in the queue, what order they should be looked at in.
+
+    Resolved verdicts (`Verdict.is_resolved`) sink to the bottom - nothing
+    left for a human to decide there, whether or not that resolution was
+    correct (`score_binary` is what catches a wrong one). Everything still
+    needing review (`INTERESTING`, `INSUFFICIENT`) surfaces first, ranked by
+    `confidence` descending: the signal the path is most confident is worth
+    attention comes first.
+
+    A record with no `confidence` value ranks last *within its own bucket*
+    (still ahead of every resolved verdict, if it needs review) - "when
+    available" (as specified) means a missing confidence is not read as
+    zero, nor as worth skipping the queue for; it is simply not a basis to
+    claim priority over a record that does carry one.
+    """
+
+    records: tuple[VerdictRecord, ...]
+    excluded_null: int
+    no_verdict: Counter
+
+
+def _queue_sort_key(r: VerdictRecord) -> tuple[bool, float]:
+    needs_review_last = r.verdict.is_resolved  # False (needs review) sorts first
+    confidence_rank = -r.confidence if r.confidence is not None else float("inf")
+    return (needs_review_last, confidence_rank)
+
+
+def order_queue(records: list[VerdictRecord]) -> OrderedQueue:
+    """Rank scored records for review order. Same exclusions as `score`
+    (`_split_scorable`): a null disposition and a missing verdict are both
+    counted, neither is scored or ranked - `Verdict.is_resolved` is not
+    defined without a verdict to ask it of.
+    """
+    scored_records, excluded_null, no_verdict = _split_scorable(records)
+    ordered = sorted(scored_records, key=_queue_sort_key)
+    return OrderedQueue(
+        records=tuple(ordered), excluded_null=excluded_null, no_verdict=no_verdict
+    )
+
+
+@dataclass(frozen=True)
+class PrecisionAtK:
+    """Of the top `k` signals in an `OrderedQueue`, how many are a true
+    `PC`/`APC` - the fraction of a reviewer's attention, spent strictly
+    top-down, that would land on a signal actually worth it.
+
+    `n` is the number of records actually ranked, `min(k, len(queue))` - when
+    the queue is shorter than `k`, `precision` is computed over `n` records,
+    not silently reported as if `k` had been reached (same reasoning as
+    `_macro`: an undefined or partial ratio is not the same claim as a bad
+    one). `precision` is `None` only when `n` is 0.
+    """
+
+    k: int
+    n: int
+    true_positives: int
+    precision: float | None
+
+
+# Reviewer-relevant checkpoints: a short first pass, a typical daily batch,
+# a generous one. Not fitted to any one run's queue length.
+PRECISION_AT_K_VALUES: tuple[int, ...] = (5, 10, 20)
+
+
+def precision_at_k(queue: OrderedQueue, k: int) -> PrecisionAtK:
+    top = queue.records[:k]
+    n = len(top)
+    true_positives = sum(1 for r in top if r.true_disposition in NEEDS_REVIEW_DISPOSITIONS)
+    return PrecisionAtK(
+        k=k, n=n, true_positives=true_positives, precision=(true_positives / n if n else None)
     )
 
 

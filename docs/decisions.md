@@ -2146,3 +2146,71 @@ the existing test at the far end of the range. `runs/rule_D043_after.json`
 (pre-change) and `runs/rule_D044_after.json` (post-change) are both
 committed, so the before/after comparison stays reproducible from the two
 files rather than only from this table.
+
+---
+
+## D-045 — Queue ordering and precision@k: the first number that answers the product question directly
+
+**Context.** Every metric in this log so far - `score`'s per-class table,
+`score_binary`'s resolved/needs-review split (D-043) - measures
+classification correctness. None of them says what actually matters to the
+person this pipeline is for: if an astronomer worked through the signals a
+run proposes to look at, in the order it proposes them, how often would the
+next one be worth their time? `order_queue` and `precision_at_k`
+(`core/metrics.py`, this session) answer that directly, alongside
+`score`/`score_binary` - not instead of either.
+
+**Decision.** `order_queue` ranks scored records for review: every resolved
+verdict (`Verdict.is_resolved`) sinks to the bottom - nothing left for a
+human to decide there, correctly or not (`score_binary` is what catches a
+wrong one). Everything still needing review (`INTERESTING`, `INSUFFICIENT`)
+surfaces first, ranked by `confidence` descending; a record with no
+confidence value ranks last within its own bucket rather than being read as
+zero or jumping the queue. `precision_at_k` then asks, of the top `k`
+signals in that order, how many are truly `PC` or `APC` - `k` = 5, 10, 20
+(`PRECISION_AT_K_VALUES`): a short first pass, a typical daily batch, a
+generous one.
+
+**Precision@10 is 80% on the current state of the pipeline
+(`runs/rule_D044_after.json`, D-041 disabled, D-044's 3x margin applied),
+and it is the number to lead with.** Every other number in this log is a
+classification statistic one step removed from the actual use of the
+system; this one is close to the product question itself - of the first ten
+signals the system would hand an astronomer today, eight are a real
+candidate. It does not replace `score_binary`'s safety constraint (a run can
+score well here while still discarding real candidates further down,
+unranked, as resolved) but it is the first number in this project that
+speaks to what a reviewer experiences working the queue top-down, rather
+than to a confusion matrix.
+
+**D-041 now has a second, independent reason to stay disabled.** D-043
+already found it net-negative on `needs_review_discarded`. Measured here
+too: with the instrumental check wired in (`runs/rule_D041_after.json`),
+precision@5 drops to 40% (2/5) because rank 1 in the whole needs-review
+queue is `TOI-2168.01`, a true `FP`, at confidence 0.75 - the single highest
+confidence value in that entire bucket; no true `PC`/`APC` signal in it
+exceeds 0.6. This is the same failure D-041's own status section already
+measured (the check fires on non-`FA` signals at flagged fractions in the
+same 30-40% range as the one true positive) seen from a different angle:
+the check does not just misclassify, it does so with enough apparent
+confidence to put the wrong signal first in line. Two independent metrics
+now agree D-041 should stay unwired.
+
+**The precision@20 drop after D-044 (50% -> 45%, 10/20 -> 9/20) is the
+`TOI-6625.01` effect D-044 already recorded, not a new finding.**
+`TOI-6625.01` leaving the needs-review bucket for `EXPLAINED` (D-039's
+implied-radius rule, once the 3x margin stops rule 4b from intercepting it
+first) is exactly the trade D-044 reported and left OPEN against
+`needs_review_discarded`; here it simply shows up as one fewer true
+`PC`/`APC` available to rank in the top 20. Whether that trade is worth it
+is D-044's open question, not a new one raised here.
+
+**Status.** Active. Implemented in `core/metrics.py` (`OrderedQueue`,
+`order_queue`, `PrecisionAtK`, `precision_at_k`, `PRECISION_AT_K_VALUES`),
+covered by unit tests in `tests/unit/test_metrics.py`. Not wired into
+`compare`/`format_report`/`ComparisonReport` - it stands alongside
+`score`/`score_binary` as a function callable directly against a saved run,
+the same way `score_binary` was used for the D-043/D-044 comparisons, not
+(yet) part of the side-by-side agent/rule report. Numbers above are computed
+on the six committed run files (`runs/rule_baseline.json` through
+`runs/rule_D044_after.json`), no network.

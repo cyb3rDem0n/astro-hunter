@@ -1,153 +1,138 @@
 # Astro Hunter
 
-Automated triage for astronomical candidate signals.
+Automated triage for astronomical candidate signals — the layer between a
+queue of candidates and the person who has to decide which ones to look at.
+Archives produce more candidates than anyone can examine (TESS alone: over
+7,800 TOIs, fewer than 720 confirmed); most of the per-candidate work behind
+that backlog is cross-referencing, not astrophysics. That is what this
+project automates.
 
-Astro Hunter takes a signal that someone else detected and builds an evidence
-dossier for it: already catalogued, consistent with an instrumental artefact,
-plausibly from a contaminating neighbour, or worth a human's time.
+## What it does
 
-It is not a detector. It is the layer between a queue of candidates and the
-person who has to decide which ones to look at.
-
-## The problem
-
-Archives produce more candidates than anyone can examine. TESS had catalogued
-over 7,800 planet candidates by early 2026 with fewer than 720 confirmed, and
-vetting still depends on manual inspection of Data Validation reports.
-
-Anomaly-detection frameworks hit the same wall from the other side: their
-limiting factor is the expert who has to label the queue, and machine learning
-on its own struggles to separate interesting anomalies from instrumental
-artefacts and uninteresting rare sources.
-
-The per-candidate work behind that bottleneck is mostly cross-referencing, not
-astrophysics. Is this object catalogued? Is there literature? Does the dip
-coincide with a known instrumental event? Is there a contaminating source in
-the aperture?
-
-That is what this project automates.
-
-## How it works
+The domain implemented today is TESS exoplanet candidates (TOIs) — the
+interfaces are written to generalize, but exoplanets is the only one built.
 
 **Input** — a signal: identifier, coordinates, period, epoch, depth.
 
-**Processing** — two independent judges see the same evidence and are
-compared against each other, not just against the truth:
+**Processing** — two independent judges see the same evidence: a **rule
+engine** (`core/evidence.py`), free to run over the whole benchmark, and an
+**agent** (`core/agent.py`) reasoning over the same checks through an MCP
+server (`mcp/server.py`). Both draw on a confirmed-planet cross-match
+against the NASA Exoplanet Archive and an aperture-contamination check
+against Gaia DR3 (with failover across ESA's own archive and its ARI/AIP
+partner mirrors). A misidentification check flags a signal only when a
+neighbour is at least 3x brighter than the assumed target, not merely
+brighter (D-044) — a nominal edge doesn't make which star is the target a
+real question at TESS's resolution. A third check, instrumental-window
+coincidence, is implemented and tested but wired into neither path today:
+D-041 turned it on for both, and D-043 turned it back off after it proved to
+be the only intervention in the project's history that discarded more real
+candidates than it caught.
 
-- A **rule engine** (`core/evidence.py`) applies ordered, deterministic rules
-  to whatever evidence was collected. It is free to run over the whole
-  labelled benchmark and costs nothing, which makes it the baseline the agent
-  has to beat.
-- An **agent** (`core/agent.py`) — a language model reasoning over the same
-  checks, exposed as tools through an MCP server (`mcp/server.py`) — decides
-  what to call and when, and submits its own verdict through a structured
-  tool call rather than free text.
+**Output** — a dossier: a verdict, a confidence, and evidence that always
+carries its source. Neither judge produces a scientific number or states
+anything without one.
 
-Both draw on the same domain checks: a confirmed-planet cross-match against
-the NASA Exoplanet Archive (`domains/exoplanets/catalogs.py`), and an
-aperture-contamination check against Gaia DR3
-(`domains/exoplanets/neighbours.py`) that now fails over across Gaia's
-official partner data centres — ESA, then the ARI and AIP mirrors — since
-ESA's query engine has a documented history of multi-hour outages. A third
-check, instrumental-window coincidence (`domains/exoplanets/instrumental.py`),
-feeds the rule engine but is not yet exposed to the agent, since it needs a
-light curve the TOI queue does not carry — so today's comparison measures
-judgement under identical, but not complete, evidence. Literature search is
-named in the evidence model (`EvidenceKind.LITERATURE`) but has no check
-behind it yet.
+## How it's measured
 
-**Output** — a dossier. Every statement carries its source — catalog name,
-matched identifier, angular separation, retrieval time, and *which* archive
-answered when more than one could have — plus a verdict and a confidence,
-labelled as that judge's own summary, never as a scientific measurement.
+Against expert dispositions pinned to a dated snapshot (`core/metrics.py`,
+D-015), never against raw accuracy — the classes are skewed enough that
+always guessing the majority disposition scores 59.5% by doing nothing.
 
-**The rule.** Neither judge produces a scientific number, and neither states
-anything without a source. Numbers come from the tools. An astronomer can
-check the output without redoing the work.
+**The method, not just the number.** From D-038 through D-041, every change
+to the rule engine was judged by its per-class macro F1. That number hid the
+real story for four decisions in a row: D-038 alone cut candidates
+wrongly discarded as resolved from 13 of 18 to 1; D-039 changed nothing
+about that (still 1 of 18) while macro F1 dropped anyway, an artefact of
+class averaging, not a regression. Only building a metric that asks the
+safety question directly — of the real candidates in this batch, how many
+did the system throw away? (`score_binary`, D-043) — surfaced that D-038 was
+the actual fix, that D-039's apparent regression was noise, and that D-041
+(the instrumental check) was the one real, net-negative change: it discarded
+two more good candidates for a modest gain in queue reduction. D-045's
+`precision_at_k` then caught a second, independent symptom of the same
+problem: with D-041 wired in, the top slot in the review queue was a false
+positive at higher confidence than any real candidate in the sample.
 
-## How it is measured
+**The current numbers, on the pinned 54-signal baseline** (`runs/rule_D043_after.json`,
+no network, reproducible from committed run files):
 
-Not demonstrated — measured, against two things at once: the truth, and the
-cheaper alternative.
+- **Queue reduction: 35.2%** — the share of signals resolved without needing
+  a human at all.
+- **Needs-review candidates wrongly discarded: 0 of 18** (`score_binary`) —
+  the one signal the raw count would call a miss, `TOI-5605.01`, turned out
+  to have a same-period confirmed match in the live archive (D-042): a stale
+  pinned label, not a system error.
+- **Precision@10: 80%** (`precision_at_k`, D-045) — of the ten signals the
+  system would rank highest for a reviewer today, eight are a real
+  candidate.
 
-The TOI catalog carries dispositions assigned by human experts, pinned to a
-dated snapshot (8,148 rows, D-015) so results stay comparable over time. The
-disposition is hidden from both judges; each produces a verdict; `core/metrics.py`
-reports precision, recall and F1 per class plus the macro average for both,
-side by side — never raw accuracy, since the classes are skewed enough that
-guessing the majority class alone scores 59.5%. A TESS false positive can
-mean two different things (an eclipsing binary on the target, or a
-contaminating one nearby), and the disposition alone can't tell them apart,
-so either correct verdict scores as correct.
+These are measured on 54 hand-picked signals, not a statistically
+definitive sample — read them as a documented floor, not a final score.
 
-This shows whether either judge reasons as an expert would, and whether the
-agent's added cost buys anything the free rule engine doesn't already get
-right. It does not show discovery: labelled candidates have already been
-vetted. Discovery means pointing the system at unlabelled queues, which is
-only meaningful once accuracy is established. The comparison tooling is
-implemented (`scripts/11_rule_triage.py`, `scripts/20_agent_triage.py`,
-`scripts/30_compare_verdicts.py`) but has not yet been run against the full
-pinned benchmark, only small pilot samples.
+A verdict of `interesting` does not mean *"the system found a planet"* — it
+means *"this signal survived every check and is worth an astronomer's time."*
+The same caution runs the other way: a verdict of `explained` is not proof a
+signal isn't real either (`TOI-6625.01`, D-044, still open). The system
+prioritizes; it does not adjudicate.
 
-A first 12-signal pilot has been run, under conditions that made the two
-paths incomparable: the agent ran while the Gaia archive was unreachable and
-the rule engine did not, so they did not see the same evidence. The result is
-recorded in D-035 and is not reported here as a finding.
-
-## Status
-
-The photometric proving ground and the full triage loop — rules, agent, and
-the comparison between them — all work end to end. What's left is the parts
-that turn a loop that runs once into a system that runs continuously.
+## What's still missing
 
 | Component | State |
 |---|---|
-| TESS acquisition and preprocessing | working |
-| BLS transit search | working, validated on Pi Mensae |
-| Core triage models (`Signal`, `Evidence`, `Dossier`, `Verdict`) | implemented |
-| Catalog cross-match (confirmed planets, aperture contamination) | implemented; Gaia queries fail over across partner data centres |
-| Instrumental-window checks | implemented for the rule engine; not yet exposed to the agent |
-| MCP tool server | implemented |
-| Rule-based verdict engine (the agent's baseline) | implemented |
-| Agent loop | implemented |
-| Benchmark comparison (agent vs. rule baseline vs. expert dispositions) | implemented; not yet run against the full benchmark |
+| TESS acquisition, preprocessing, BLS search | working, validated on Pi Mensae |
+| Rule engine, agent loop, MCP tool server | implemented |
+| Catalog cross-match, aperture contamination (3x margin, D-044) | implemented |
+| Instrumental-window check | implemented; unwired from both paths (D-043) |
+| Binary safety metric, queue ordering, precision@k | implemented (D-043, D-045) |
+| Full agent-vs-rule comparison over the pinned benchmark | not yet run (API cost) |
 | Candidate queue (persistence, resumability) | not implemented |
-| Domain-interpretation layer as its own module (`domains/exoplanets/domain.py`) | not implemented — logic currently lives directly in the check modules |
+| Domain-interpretation layer as its own module | not implemented |
+| Literature search (`EvidenceKind.LITERATURE`) | named, no check behind it |
 
 ## Where this project came from
 
-It began as a transit-detection pipeline. That part works and is documented in
-[`docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md`](docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md),
-including the case where the search returned a confident wrong period until the
-light curve was detrended — the concrete reason behind the project's
+It began as a transit-detection pipeline. That part works and is documented
+in [`docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md`](docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md),
+including the case where the search returned a confident wrong period until
+the light curve was detrended — the concrete reason behind this project's
 "detection is not discovery" principle.
+
+The scene itself: a blind BLS pass on Pi Mensae's light curve returned
+7.598 d, a clean-looking, confident result. Only after detrending removed
+slow instrumental trends did the true 6.268 d period emerge, matching the
+known 6.27 d planet (D-008). BLS maximises a merit function with no notion
+of physical plausibility — a confident wrong answer looks exactly like a
+right one until something else checks it.
 
 Looking at where the real bottleneck sits changed the focus. Detection is
 crowded and well served by mature tools; triage throughput is not. The scope
-change and its reasoning are recorded as D-011 in
-[`docs/decisions.md`](docs/decisions.md).
+change is recorded as D-011 in [`docs/decisions.md`](docs/decisions.md).
 
 The photometric pipeline is kept: it proves the project handles real
 observational data, and it will eventually produce queues of its own.
 
 ## Principles
 
-- Detection is not discovery. A signal is a candidate until evidence says
-  otherwise.
-- Absence of data is not absence of signal.
-- Every claim carries its source, or it is not made.
-- Cleaning is conservative: points are never removed for making a candidate
-  less convenient.
-- Cheap checks run first. Expensive ones run only on what survives.
+Detection is not discovery, in either direction. Absence of data is not
+absence of signal. Every claim carries its source, or it is not made. The
+number that measures harm outranks the one that measures efficiency, and
+gets reported before any decision is written about it.
+
+## Next
+
+- A persistent candidate queue, so a run that stops halfway doesn't lose
+  what it already paid for.
+- The full agent-vs-rule comparison over the pinned 54-signal benchmark,
+  once there is API budget for it.
+- An odd/even transit-depth check, the actual `EXPLAINED` path D-038 left
+  open — `FP` recall on the rule engine is still 0%.
 
 ## Documentation
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — structural boundaries
-- [`docs/decisions.md`](docs/decisions.md) — why each choice is what it is
-- [`docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md`](docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md) — the photometry
-- [`docs/stages/`](docs/stages/) — per-stage documentation: what a scientific
-  component does, why, and how to read its output
+[`docs/decisions.md`](docs/decisions.md) (why each choice is what it is) ·
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (structural boundaries) ·
+[`docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md`](docs/ASTRO_HUNTER_TECHNICAL_GUIDE.md) (the photometry) ·
+[`docs/stages/`](docs/stages/) (per-stage documentation)
 
-## Licence
-
-MIT.
+MIT licence.

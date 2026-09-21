@@ -62,3 +62,7 @@ data/processed/
 .claude/settings.local.json
 CLAUDE.local.md
 runs/*.zip
+
+# Ad-hoc investigation scratch data - not a curated run file (contrast with
+# runs/, which is committed deliberately, D-038 and on)
+runs_scratch/
